@@ -32,7 +32,7 @@ dependencies:
     - mysql-connector-python
     # - catboost
     # - streamlit
-    - supabase
+    # - supabase
     - pip:
           - aiohttp==3.11.16
           # - boruta==0.4.3
@@ -56,7 +56,7 @@ dependencies:
           # - sktime==0.36.0
           - sodapy==2.2.0
           - statsmodels==0.14.4
-          # - supabase==2.15.0
+          - supabase==2.15.0
           # - url-normalize==1.4.3
 prefix: C:\Users\harsh\miniconda3\envs\Barbados
 ssl_verify: false
