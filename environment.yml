@@ -30,6 +30,7 @@ dependencies:
     - pydantic
     - sqlalchemy
     - mysql-connector-python
+    - pip
     # - catboost
     # - streamlit
     # - supabase
@@ -59,9 +60,9 @@ dependencies:
           - supabase==2.15.0
           # - url-normalize==1.4.3
 prefix: C:\Users\harsh\miniconda3\envs\Barbados
-ssl_verify: false
+# ssl_verify: false
 
-# Show channel URLs when displaying what is going to be downloaded and
-# in 'conda list'. The default is False.
-show_channel_urls: True
-allow_other_channels: True
+# # Show channel URLs when displaying what is going to be downloaded and
+# # in 'conda list'. The default is False.
+# show_channel_urls: True
+# allow_other_channels: True
