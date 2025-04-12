@@ -1,5 +1,7 @@
 name: Barbados
 channels:
+    - conda-forge
+    - defaults
     - https://repo.anaconda.com/pkgs/main
     - https://repo.anaconda.com/pkgs/r
     - https://repo.anaconda.com/pkgs/msys2
@@ -17,7 +19,6 @@ dependencies:
     - umap-learn
     - seaborn
     - xgboost
-    - tensorflow
     - dash
     - annotated-types
     - anyio
@@ -38,6 +39,7 @@ dependencies:
           - aiohttp==3.11.16
           # - boruta==0.4.3
           - cattrs==24.1.2
+          - tensorflow
           - cython==3.0.11
           - gunicorn==23.0.0
           - h2==4.2.0
