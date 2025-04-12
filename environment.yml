@@ -24,18 +24,18 @@ dependencies:
     - argcomplete
     - argon2-cffi
     - arrow
-    - itables
+    # - itables
     - python-dotenv
     - alembic
     - pydantic
     - sqlalchemy
     - mysql-connector-python
-    - catboost
-    - streamlit
+    # - catboost
+    # - streamlit
     - supabase
     - pip:
           - aiohttp==3.11.16
-          - boruta==0.4.3
+          # - boruta==0.4.3
           - cattrs==24.1.2
           - cython==3.0.11
           - gunicorn==23.0.0
@@ -52,12 +52,12 @@ dependencies:
           - psycopg2==2.9.10
           - requests-cache==1.2.1
           - retry-requests==2.0.0
-          - scikit-base==0.12.0
-          - sktime==0.36.0
+          # - scikit-base==0.12.0
+          # - sktime==0.36.0
           - sodapy==2.2.0
           - statsmodels==0.14.4
-          - supabase==2.15.0
-          - url-normalize==1.4.3
+          # - supabase==2.15.0
+          # - url-normalize==1.4.3
 prefix: C:\Users\harsh\miniconda3\envs\Barbados
 ssl_verify: false
 
