@@ -19,11 +19,11 @@ dependencies:
     - xgboost
     - tensorflow
     - dash
-    - annotated-types==0.6.0
-    - anyio==3.7.1
-    - argcomplete==3.2.3
-    - argon2-cffi==23.1.0
-    - arrow==1.3.0
+    - annotated-types
+    - anyio
+    - argcomplete
+    - argon2-cffi
+    - arrow
     - itables
     - python-dotenv
     - alembic
