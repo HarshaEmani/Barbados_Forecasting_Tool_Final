@@ -8,6 +8,8 @@ WORKDIR /app
 COPY environment.yml .
 COPY . .
 
+RUN conda update -n base -c defaults conda
+
 # Create the conda environment
 RUN conda env create -f environment.yml
 
