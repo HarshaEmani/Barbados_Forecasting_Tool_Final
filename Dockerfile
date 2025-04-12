@@ -11,7 +11,10 @@ COPY . .
 RUN conda update -n base -c defaults conda
 
 # Create the conda environment
-RUN conda env create -f environment.yml
+# RUN conda env create -f environment.yml
+
+RUN conda install -n base -c conda-forge mamba
+RUN mamba env create -f environment.yml
 
 # Activate environment and set it as default
 SHELL ["conda", "run", "-n", "forecast-env", "/bin/bash", "-c"]
