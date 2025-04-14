@@ -1145,7 +1145,7 @@ def run_training(feeder_id, model_arch, scenario, version, train_start, train_en
                     "output_hours": y_train_scaled.shape[1],
                 }
                 model_object_trained, final_validation_metrics, y_pred_val_lgbm_orig = train_lightgbm_model(
-                    X_train_scaled, y_train_scaled, X_val_scaled, y_val_original, fitted_y_scaler, verbose=1
+                    X_train_scaled, y_train_scaled, X_val_scaled, y_val_original, fitted_y_scaler, verbose=-1
                 )
                 y_pred_val_plot = y_pred_val_lgbm_orig
             elif model_arch == "ANN_Baseload" or model_arch == "ANN_Change_in_Load":

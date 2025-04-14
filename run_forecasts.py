@@ -3,8 +3,8 @@ import subprocess
 from datetime import datetime, timedelta
 import time
 
-start_date = datetime.strptime("2024-07-01", "%Y-%m-%d")
-end_date = datetime.strptime("2024-07-10", "%Y-%m-%d")
+start_date = datetime.strptime("2024-07-26", "%Y-%m-%d")
+end_date = datetime.strptime("2024-07-26", "%Y-%m-%d")
 
 current_date = start_date
 
