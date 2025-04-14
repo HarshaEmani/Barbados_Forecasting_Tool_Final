@@ -52,7 +52,8 @@ dependencies:
           - padasip==1.2.2
           - patsy==1.0.1
           - pmdarima==2.0.4
-          - psycopg2==2.9.10
+          - psycopg2-binary
+          # - psycopg2==2.9.10
           - requests-cache==1.2.1
           - retry-requests==2.0.0
           # - scikit-base==0.12.0
@@ -61,7 +62,7 @@ dependencies:
           - statsmodels==0.14.4
           - supabase==2.15.0
           # - url-normalize==1.4.3
-prefix: C:\Users\harsh\miniconda3\envs\Barbados
+# prefix: C:\Users\harsh\miniconda3\envs\Barbados
 # ssl_verify: false
 
 # # Show channel URLs when displaying what is going to be downloaded and

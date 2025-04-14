@@ -16,7 +16,7 @@ try:
     import argparse
     from sklearn.preprocessing import MinMaxScaler
     from sklearn.metrics import mean_absolute_error, mean_squared_error
-    from DB_Utils import select_model_for_forecast, load_artifact_from_storage, store_forecasts, fetch_data
+    from DB_Utils import select_model_for_forecast, load_artifact_from_storage, store_forecasts, fetch_data, NormalizeLayer
     from supabase import create_client, Client
     import traceback
     import plotly.express as px
@@ -238,31 +238,135 @@ def convert_change_in_load_to_base_load(X_original, y_pred_change_original):
     return y_pred_base_np
 
 
-def predict_with_padasip_rls(rls_filters, actuals, predictions1, predictions2):
-    # print("+++++++++++++++++++++++++++")
-    # print(actuals)
-    # print(predictions1)
-    # print(predictions2)
-    # print("+++++++++++++++++++++++++++")
+# def predict_with_padasip_rls(rls_filters, actuals, predictions1, predictions2):
+#     # print("+++++++++++++++++++++++++++")
+#     # print(actuals)
+#     # print(predictions1)
+#     # print(predictions2)
+#     # print("+++++++++++++++++++++++++++")
 
-    """Combines predictions using a list of fitted padasip RLS filters."""
-    n_samples, n_outputs = predictions1.shape
+#     """Combines predictions using a list of fitted padasip RLS filters."""
+#     n_samples, n_outputs = predictions1.shape
+#     if len(rls_filters) != n_outputs:
+#         raise ValueError("Number of RLS filters does not match number of prediction outputs.")
+#     combined_predictions = np.zeros_like(predictions1)
+#     for t in range(n_samples):
+#         for k in range(n_outputs):
+#             x_k = np.array([predictions1[t, k], predictions2[t, k]])
+#             d_k = actuals[t, k]
+#             combined_predictions[t, k] = rls_filters[k].predict(x_k)
+
+#             rls_filters[k].adapt(d_k, x_k)
+
+#             # print("+++++++++++++++++++++++++++")
+#             # print("Input, Predicted output: x_k, combined_predictions: \n", x_k, combined_predictions[t, k], end=" ")
+#             # print(" \n", )
+#             # print("+++++++++++++++++++++++++++")
+#     return combined_predictions
+
+# Forecaster_Utils.py
+
+
+def predict_with_padasip_rls(rls_filters, y_scaler, actuals_orig, predictions1_orig, predictions2_orig):
+    """
+    Combines predictions using fitted RLS filters, performing scaling internally.
+    Adapts the filters based on provided actuals.
+
+    Args:
+        rls_filters (list): List of fitted padasip FilterRLS objects.
+        y_scaler (object): Fitted MinMaxScaler object for the target variable.
+        actuals_orig (np.array): Actual target values in original scale.
+        predictions1_orig (np.array): Predictions from model 1 in original scale.
+        predictions2_orig (np.array): Predictions from model 2 in original scale.
+
+    Returns:
+        np.array: Combined predictions in the original scale.
+    """
+    if not PADASIP_AVAILABLE:
+        raise RuntimeError("padasip library not found, cannot use RLS filters.")
+    if y_scaler is None or not hasattr(y_scaler, "transform") or not hasattr(y_scaler, "inverse_transform"):
+        raise ValueError("A valid, fitted y_scaler (MinMaxScaler) must be provided.")
+
+    # Input validation
+    if actuals_orig is None:
+        raise ValueError("Actual values are required for RLS prediction with adaptation.")
+    if predictions1_orig.shape != predictions2_orig.shape or predictions1_orig.shape != actuals_orig.shape:
+        raise ValueError(f"Shape mismatch: actuals {actuals_orig.shape}, preds1 {predictions1_orig.shape}, preds2 {predictions2_orig.shape}")
+
+    n_samples, n_outputs = predictions1_orig.shape
     if len(rls_filters) != n_outputs:
         raise ValueError("Number of RLS filters does not match number of prediction outputs.")
-    combined_predictions = np.zeros_like(predictions1)
-    for t in range(n_samples):
-        for k in range(n_outputs):
-            x_k = np.array([predictions1[t, k], predictions2[t, k]])
-            d_k = actuals[t, k]
-            combined_predictions[t, k] = rls_filters[k].predict(x_k)
 
-            rls_filters[k].adapt(d_k, x_k)
+    # --- Scale Inputs and Actuals ---
+    print("Scaling inputs and actuals for RLS predict/adapt...")
+    try:
+        # Ensure shapes are correct for scaler (samples, features/hours)
+        if actuals_orig.shape[1] != y_scaler.n_features_in_:
+            raise ValueError("Actuals shape mismatch with y_scaler")
+        if predictions1_orig.shape[1] != y_scaler.n_features_in_:
+            raise ValueError("Predictions1 shape mismatch with y_scaler")
+        if predictions2_orig.shape[1] != y_scaler.n_features_in_:
+            raise ValueError("Predictions2 shape mismatch with y_scaler")
 
-            # print("+++++++++++++++++++++++++++")
-            # print("Input, Predicted output: x_k, combined_predictions: \n", x_k, combined_predictions[t, k], end=" ")
-            # print(" \n", )
-            # print("+++++++++++++++++++++++++++")
-    return combined_predictions
+        actuals_scaled = y_scaler.transform(actuals_orig)
+        predictions1_scaled = y_scaler.transform(predictions1_orig)
+        predictions2_scaled = y_scaler.transform(predictions2_orig)
+    except Exception as scale_err:
+        print(f"ERROR during scaling for RLS: {scale_err}")
+        traceback.print_exc()
+        raise ValueError("Failed to scale data for RLS.") from scale_err
+    # --- End Scaling ---
+
+    combined_predictions_scaled = np.zeros_like(predictions1_scaled)
+
+    print(f"Running RLS predict-adapt loop on SCALED data for {n_samples} sample(s)...")
+    for t in range(n_samples):  # Loop through samples
+        for k in range(n_outputs):  # Loop through hours/outputs
+            x_k_scaled = np.array([predictions1_scaled[t, k], predictions2_scaled[t, k]])
+            d_k_scaled = actuals_scaled[t, k]  # Scaled actual value
+
+            # --- Prediction Step (using scaled inputs) ---
+            if np.isnan(x_k_scaled).any() or np.isinf(x_k_scaled).any():
+                print(f"Warning: NaN/Inf SCALED input for RLS predict at sample {t}, hour {k}. Setting scaled output to NaN.")
+                combined_predictions_scaled[t, k] = np.nan
+                continue
+            try:
+                combined_predictions_scaled[t, k] = rls_filters[k].predict(x_k_scaled)
+            except Exception as predict_err:
+                print(f"ERROR during RLS predict (scaled) at sample {t}, hour {k}: {predict_err}")
+                combined_predictions_scaled[t, k] = np.nan
+                continue
+
+            # --- Adaptation Step (using scaled inputs and target) ---
+            if np.isnan(d_k_scaled) or np.isinf(d_k_scaled):
+                print(f"Warning: NaN/Inf SCALED target value at sample {t}, hour {k}. Skipping RLS adapt.")
+                continue
+            try:
+                rls_filters[k].adapt(d_k_scaled, x_k_scaled)
+            except Exception as adapt_err:
+                print(f"ERROR during RLS adapt (scaled) at sample {t}, hour {k}: {adapt_err}")
+                pass
+
+    print("RLS predict-adapt loop finished.")
+
+    # --- Inverse Transform the Combined Prediction ---
+    print("Inverse transforming combined RLS prediction...")
+    # Handle potential NaNs introduced during predict/adapt before inverse transform
+    if np.isnan(combined_predictions_scaled).any():
+        print("Warning: NaNs detected in scaled RLS predictions before inverse transform.")
+        # Option 1: Keep NaNs - inverse_transform might handle them or raise error depending on sklearn version
+        # Option 2: Impute NaNs (e.g., with mean of non-NaN scaled preds) - complex
+        # Let's proceed and let inverse_transform handle it for now.
+    try:
+        combined_predictions_original = y_scaler.inverse_transform(combined_predictions_scaled)
+    except Exception as inv_err:
+        print(f"ERROR during inverse transform of RLS predictions: {inv_err}")
+        traceback.print_exc()
+        # Return scaled preds or NaNs if inverse fails? Returning NaNs is safer.
+        combined_predictions_original = np.full_like(combined_predictions_scaled, np.nan)
+    # --- End Inverse Transform ---
+
+    return combined_predictions_original
 
 
 def run_forecast(feeder_id, target_date_str, architecture, scenario, version=None):  # Changed version_prefix to version
@@ -278,7 +382,7 @@ def run_forecast(feeder_id, target_date_str, architecture, scenario, version=Non
     try:
         # Get the final prediction using the recursive function
         # Pass the specific version requested (can be None to get latest)
-        final_prediction_original, target_columns, final_model_id = get_prediction(
+        final_prediction_original, target_columns, final_model_id, y_scaler_to_use = get_prediction(
             feeder_id, target_date, architecture, scenario, version=version  # Pass specific version
         )
 
@@ -455,10 +559,209 @@ def run_forecast(feeder_id, target_date_str, architecture, scenario, version=Non
 _prediction_cache = {}
 
 
+# def get_prediction(feeder_id, target_date, architecture, scenario, version=None):
+#     """
+#     Gets the final (original scale) prediction for a given model, handling recursion for RLS
+#     and fetching actuals needed for RLS adaptation during prediction.
+#     Uses a cache to avoid re-computing predictions for the same model/date/version.
+#     Requires input models for RLS stages to have the SAME version string.
+#     """
+#     global _prediction_cache
+#     cache_key = (feeder_id, target_date, architecture, scenario, version)
+#     if cache_key in _prediction_cache:
+#         print(f"Cache HIT for: {cache_key}")
+#         return _prediction_cache[cache_key]
+#     else:
+#         print(f"Cache MISS for: {cache_key}. Computing prediction...")
+
+#     # 1. Select Model Metadata
+#     model_metadata = select_model_for_forecast(feeder_id, architecture, scenario, version=version)
+#     if not model_metadata:
+#         if version:
+#             raise ValueError(f"Could not find model metadata for specific version {version} and criteria {cache_key}")
+#         else:
+#             raise ValueError(f"Could not find any model metadata for {cache_key}")
+
+#     actual_model_id = model_metadata["model_id"]
+#     artifact_path_info = model_metadata["model_artifact_path"]
+#     model_arch = model_metadata["model_architecture_type"]
+#     model_scenario = model_metadata["scenario_type"]
+#     actual_version_used = model_metadata["model_version"]
+#     feature_config = model_metadata.get("feature_engineering_config", {})
+#     predicts_change = feature_config.get("target") == "Net_Load_Change" or "Change_in_Load" in model_arch
+
+#     # 2. Load Artifact(s)
+#     loaded_artifact = load_artifact_from_storage(artifact_path_info)
+
+#     # 3. Check Artifact Type and Predict
+#     final_prediction_original = None
+#     target_columns_final = loaded_artifact.get("target_columns")
+
+#     # --- Case 1: RLS Filters Artifact ---
+#     if "rls_filters" in loaded_artifact and loaded_artifact.get("rls_filters") is not None:
+#         print(f"Processing RLS artifact for {model_arch} (Version: {actual_version_used})...")
+#         rls_filters = loaded_artifact["rls_filters"]
+#         target_columns_final = loaded_artifact.get("target_columns")  # Get target columns from RLS artifact
+#         if not target_columns_final:
+#             raise ValueError("RLS artifact missing 'target_columns'.")
+
+#         # --- Fetch Actual Data Needed for RLS Adaptation ---
+#         # RLS adaptation needs the actual base load for the target date
+#         print(f"Fetching actual base load data for RLS adaptation (Target Date: {target_date})...")
+#         # Fetch data covering the target date (and potentially day before for feature eng context)
+#         start_fetch_dt_actuals = datetime.combine(target_date - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+#         end_fetch_dt_actuals = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+#         actuals_df_raw = fetch_data(feeder_id, start_fetch_dt_actuals.isoformat(), end_fetch_dt_actuals.isoformat())
+#         if actuals_df_raw.empty:
+#             raise ValueError(f"Insufficient data fetched to get actuals for RLS adaptation on {target_date}.")
+
+#         # Use feature_engineer_and_scale to get the correctly shaped *original* target data
+#         # We don't need scalers here, just the original y dataframe/array
+#         # Use change_in_load=False because RLS combines to predict base load
+#         _, y_actual_original_df, _, _ = feature_engineer_and_scale(
+#             actuals_df_raw,
+#             model_scenario,
+#             target_date,
+#             x_scaler=None,
+#             y_scaler=None,  # No scalers needed
+#             change_in_load=False,  # We need the base load actuals
+#             apply_scaling=False,  # Do not scale
+#         )
+
+#         print(actuals_df_raw, y_actual_original_df)
+
+#         # Filter for the target date and ensure alignment
+#         y_actual_original_target_day = y_actual_original_df[y_actual_original_df.index.date == target_date]
+
+#         if y_actual_original_target_day.empty:
+#             raise ValueError(f"Could not extract actual target values for {target_date} for RLS adaptation.")
+#         if len(y_actual_original_target_day) > 1:
+#             print(f"Warning: Multiple actual rows found for target date {target_date}. Using first.")
+#             y_actual_original_target_day = y_actual_original_target_day.head(1)
+
+#         # Ensure columns match the target_columns from the artifact
+#         if list(y_actual_original_target_day.columns) != target_columns_final:
+#             print("Warning: Actuals columns mismatch RLS target columns. Attempting reorder.")
+#             try:
+#                 y_actual_original_target_day = y_actual_original_target_day[target_columns_final]
+#             except KeyError as ke:
+#                 missing = set(target_columns_final) - set(y_actual_original_target_day.columns)
+#                 extra = set(y_actual_original_target_day.columns) - set(target_columns_final)
+#                 raise ValueError(f"Actuals column mismatch for RLS. Missing: {missing}. Extra: {extra}") from ke
+
+#         # Convert actuals to numpy array for predict_with_padasip_rls
+#         actuals_np = y_actual_original_target_day.values
+#         # --- End Fetch Actual Data ---
+
+#         # Identify input models from config
+#         input_models = feature_config.get("input_models")
+#         if not input_models or len(input_models) != 2:
+#             raise ValueError(f"Invalid or missing 'input_models' in feature_config for RLS model {model_arch}")
+
+#         print(f"RLS requires inputs from: {input_models}")
+#         # Recursively get predictions for input models using the SAME EXACT version
+#         input_pred_1_result = get_prediction(feeder_id, target_date, input_models[0], scenario, actual_version_used)
+#         input_pred_2_result = get_prediction(feeder_id, target_date, input_models[1], scenario, actual_version_used)
+
+#         if input_pred_1_result is None or input_pred_2_result is None:
+#             raise RuntimeError(f"Failed to get predictions for one or both input models for {model_arch} (Version: {actual_version_used})")
+
+#         input_pred_1 = input_pred_1_result[0]  # Prediction array
+#         input_pred_2 = input_pred_2_result[0]  # Prediction array
+
+#         # Check shape consistency before combining
+#         if input_pred_1.shape != actuals_np.shape or input_pred_2.shape != actuals_np.shape:
+#             raise ValueError(
+#                 f"Shape mismatch before RLS combination: Actuals={actuals_np.shape}, Pred1={input_pred_1.shape}, Pred2={input_pred_2.shape}"
+#             )
+
+#         # Combine predictions using loaded RLS filters AND provide actuals for adaptation
+#         print(f"Combining predictions for {model_arch} using RLS filters (with adaptation)...")
+#         final_prediction_original = predict_with_padasip_rls(rls_filters, actuals_np, input_pred_1, input_pred_2)  # Pass the fetched actuals
+#         # target_columns_final already set from RLS artifact
+
+#     # --- Case 2: Base Model Artifact (LGBM, Keras) ---
+#     elif "model" in loaded_artifact and loaded_artifact.get("model") is not None:
+#         # --- This block remains the same as before ---
+#         print(f"Processing base model artifact for {model_arch} (Version: {actual_version_used})...")
+#         model = loaded_artifact["model"]
+#         x_scaler = loaded_artifact["x_scaler"]
+#         y_scaler = loaded_artifact["y_scaler"]
+#         feature_columns = loaded_artifact["feature_columns"]
+#         target_columns_final = loaded_artifact.get("target_columns")
+#         if model is None or x_scaler is None or y_scaler is None or feature_columns is None or target_columns_final is None:
+#             raise ValueError(f"Loaded artifact for base model {model_arch} (Version: {actual_version_used}) is missing required components.")
+#         start_fetch_dt = datetime.combine(target_date - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+#         end_fetch_dt = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
+#         input_df_raw = fetch_data(feeder_id, start_fetch_dt.isoformat(), end_fetch_dt.isoformat())
+#         if input_df_raw.empty:
+#             raise ValueError(f"Insufficient data fetched for {model_arch} prediction.")
+#         target_day_data = input_df_raw[input_df_raw.index.date == target_date]
+#         required_forecast_cols = ["Temperature_Forecast", "Shortwave_Radiation_Forecast", "Cloud_Cover_Forecast"]
+#         if target_day_data.empty or target_day_data[required_forecast_cols].isnull().values.any():
+#             raise ValueError(f"Missing weather forecast data for {target_date}.")
+#         X_scaled_df, _, _, _ = feature_engineer_and_scale(
+#             input_df_raw, model_scenario, target_date, x_scaler=x_scaler, y_scaler=y_scaler, change_in_load=predicts_change, apply_scaling=True
+#         )
+#         X_scaled_target_day = X_scaled_df
+#         if X_scaled_target_day.empty:
+#             raise ValueError(f"No input feature vector generated for {model_arch}.")
+#         if list(X_scaled_target_day.columns) != feature_columns:
+#             print(f"Warning: Feature columns mismatch for {model_arch}. Attempting reorder.")
+#             try:
+#                 X_scaled_target_day = X_scaled_target_day[feature_columns]
+#             except KeyError as ke:
+#                 missing = set(feature_columns) - set(X_scaled_target_day.columns)
+#                 extra = set(X_scaled_target_day.columns) - set(feature_columns)
+#                 raise ValueError(f"Feature mismatch for {model_arch}. Missing: {missing}. Extra: {extra}") from ke
+#         print(f"Generating scaled predictions for {model_arch}...")
+#         is_lstm = KERAS_AVAILABLE and isinstance(model, tf.keras.Model) and any(isinstance(layer, tf.keras.layers.LSTM) for layer in model.layers)
+#         if is_lstm:
+#             X_input_final = X_scaled_target_day.values.reshape((1, 1, X_scaled_target_day.shape[1]))
+#         else:
+#             X_input_final = X_scaled_target_day.values
+#         y_pred_scaled = model.predict(X_input_final)
+#         print(f"Inverse transforming predictions for {model_arch}...")
+#         if y_pred_scaled.shape[1] != y_scaler.n_features_in_:
+#             raise ValueError(f"Prediction shape mismatch for inverse transform ({model_arch}).")
+#         y_pred_original = y_scaler.inverse_transform(y_pred_scaled)
+#         final_prediction_original = y_pred_original
+#         if predicts_change:
+#             print(f"Converting change_in_load prediction for {model_arch}...")
+#             X_original_target_day, _, _, _ = feature_engineer_and_scale(
+#                 input_df_raw, model_scenario, target_date, x_scaler=x_scaler, y_scaler=y_scaler, change_in_load=predicts_change, apply_scaling=False
+#             )
+#             if X_original_target_day.empty:
+#                 raise ValueError(f"Could not retrieve original X data for change conversion ({model_arch}).")
+#             final_prediction_original = convert_change_in_load_to_base_load(X_original_target_day, y_pred_original)
+#         # --- End of Base Model block ---
+
+#     # --- Case 3: Unknown Artifact Type ---
+#     else:
+#         raise TypeError(f"Loaded artifact for {model_arch} (Version: {actual_version_used}) has unknown structure.")
+
+#     # --- Store result in cache and return ---
+#     if final_prediction_original is None:
+#         raise ValueError(f"Failed to generate final prediction for {cache_key}")
+
+#     # Return prediction, target columns, and the specific model ID used
+#     result = (final_prediction_original, target_columns_final, actual_model_id)
+#     _prediction_cache[cache_key] = result
+#     print(f"Prediction computed and cached for: {cache_key}")
+#     return result
+
+
+# Forecaster_Utils.py or main script
+
+# Global cache for predictions within a single run_forecast execution
+_prediction_cache = {}
+
+
 def get_prediction(feeder_id, target_date, architecture, scenario, version=None):
     """
     Gets the final (original scale) prediction for a given model, handling recursion for RLS
     and fetching actuals needed for RLS adaptation during prediction.
+    Applies scaling before RLS combination.
     Uses a cache to avoid re-computing predictions for the same model/date/version.
     Requires input models for RLS stages to have the SAME version string.
     """
@@ -492,93 +795,98 @@ def get_prediction(feeder_id, target_date, architecture, scenario, version=None)
     # 3. Check Artifact Type and Predict
     final_prediction_original = None
     target_columns_final = loaded_artifact.get("target_columns")
+    y_scaler_to_use = None  # Store the relevant y_scaler
 
     # --- Case 1: RLS Filters Artifact ---
     if "rls_filters" in loaded_artifact and loaded_artifact.get("rls_filters") is not None:
         print(f"Processing RLS artifact for {model_arch} (Version: {actual_version_used})...")
         rls_filters = loaded_artifact["rls_filters"]
-        target_columns_final = loaded_artifact.get("target_columns")  # Get target columns from RLS artifact
+        target_columns_final = loaded_artifact.get("target_columns")
         if not target_columns_final:
             raise ValueError("RLS artifact missing 'target_columns'.")
 
         # --- Fetch Actual Data Needed for RLS Adaptation ---
-        # RLS adaptation needs the actual base load for the target date
         print(f"Fetching actual base load data for RLS adaptation (Target Date: {target_date})...")
-        # Fetch data covering the target date (and potentially day before for feature eng context)
         start_fetch_dt_actuals = datetime.combine(target_date - timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         end_fetch_dt_actuals = datetime.combine(target_date + timedelta(days=1), datetime.min.time(), tzinfo=timezone.utc)
         actuals_df_raw = fetch_data(feeder_id, start_fetch_dt_actuals.isoformat(), end_fetch_dt_actuals.isoformat())
         if actuals_df_raw.empty:
-            raise ValueError(f"Insufficient data fetched to get actuals for RLS adaptation on {target_date}.")
+            raise ValueError(f"Insufficient data fetched for actuals on {target_date}.")
 
-        # Use feature_engineer_and_scale to get the correctly shaped *original* target data
-        # We don't need scalers here, just the original y dataframe/array
-        # Use change_in_load=False because RLS combines to predict base load
+        # --- Get Predictions for Input Models (Original Scale) ---
+        input_models = feature_config.get("input_models")
+        if not input_models or len(input_models) != 2:
+            raise ValueError(f"Invalid 'input_models' in feature_config for {model_arch}")
+        print(f"RLS requires inputs from: {input_models}")
+        input_pred_1_result = get_prediction(feeder_id, target_date, input_models[0], scenario, actual_version_used)
+        input_pred_2_result = get_prediction(feeder_id, target_date, input_models[1], scenario, actual_version_used)
+        if input_pred_1_result is None or input_pred_2_result is None:
+            raise RuntimeError(f"Failed to get predictions for input models ({model_arch} V:{actual_version_used})")
+        input_pred_1_orig = input_pred_1_result[0]
+        input_pred_2_orig = input_pred_2_result[0]
+
+        # --- Need a y_scaler to process actuals and scale inputs ---
+        # Let's try to get it from one of the base model artifacts loaded recursively (it should be cached)
+        # We assume base models (like ANN_Baseload) store the correct y_scaler
+        base_model_cache_key = (feeder_id, target_date, input_models[0], scenario, actual_version_used)  # Assuming first input is base
+        if base_model_cache_key in _prediction_cache:
+            # Need to load the artifact again briefly to get the scaler if not already stored separately
+            # This is inefficient - ideally cache the loaded artifact components
+            print(f"Retrieving y_scaler from cached base model run: {input_models[0]}")
+            base_metadata_temp = select_model_for_forecast(feeder_id, input_models[0], scenario, version=actual_version_used)
+            if base_metadata_temp:
+                loaded_base_artifact_temp = load_artifact_from_storage(base_metadata_temp["model_artifact_path"])
+                y_scaler_to_use = loaded_base_artifact_temp.get("y_scaler")
+        if y_scaler_to_use is None:
+            # Fallback: Load base model artifact directly if not cached (shouldn't happen often with cache)
+            print(f"Fallback: Loading base model {input_models[0]} artifact to get y_scaler...")
+            base_metadata_temp = select_model_for_forecast(feeder_id, input_models[0], scenario, version=actual_version_used)
+            if base_metadata_temp:
+                loaded_base_artifact_temp = load_artifact_from_storage(base_metadata_temp["model_artifact_path"])
+                y_scaler_to_use = loaded_base_artifact_temp.get("y_scaler")
+
+        if y_scaler_to_use is None:
+            raise ValueError(f"Could not obtain y_scaler needed for RLS processing for {model_arch}")
+
+        # --- Prepare Actuals (Original Scale) ---
+        # Use feature_engineer to get correctly shaped original target data
         _, y_actual_original_df, _, _ = feature_engineer_and_scale(
             actuals_df_raw,
             model_scenario,
             target_date,
             x_scaler=None,
-            y_scaler=None,  # No scalers needed
-            change_in_load=False,  # We need the base load actuals
-            apply_scaling=False,  # Do not scale
+            y_scaler=y_scaler_to_use,  # Pass scaler for internal consistency checks if any
+            change_in_load=False,
+            apply_scaling=False,
         )
-
-        print(actuals_df_raw, y_actual_original_df)
-
-        # Filter for the target date and ensure alignment
         y_actual_original_target_day = y_actual_original_df[y_actual_original_df.index.date == target_date]
-
         if y_actual_original_target_day.empty:
-            raise ValueError(f"Could not extract actual target values for {target_date} for RLS adaptation.")
-        if len(y_actual_original_target_day) > 1:
-            print(f"Warning: Multiple actual rows found for target date {target_date}. Using first.")
-            y_actual_original_target_day = y_actual_original_target_day.head(1)
-
-        # Ensure columns match the target_columns from the artifact
+            raise ValueError(f"Could not extract actual target values for {target_date}.")
         if list(y_actual_original_target_day.columns) != target_columns_final:
-            print("Warning: Actuals columns mismatch RLS target columns. Attempting reorder.")
-            try:
-                y_actual_original_target_day = y_actual_original_target_day[target_columns_final]
-            except KeyError as ke:
-                missing = set(target_columns_final) - set(y_actual_original_target_day.columns)
-                extra = set(y_actual_original_target_day.columns) - set(target_columns_final)
-                raise ValueError(f"Actuals column mismatch for RLS. Missing: {missing}. Extra: {extra}") from ke
-
-        # Convert actuals to numpy array for predict_with_padasip_rls
-        actuals_np = y_actual_original_target_day.values
-        # --- End Fetch Actual Data ---
-
-        # Identify input models from config
-        input_models = feature_config.get("input_models")
-        if not input_models or len(input_models) != 2:
-            raise ValueError(f"Invalid or missing 'input_models' in feature_config for RLS model {model_arch}")
-
-        print(f"RLS requires inputs from: {input_models}")
-        # Recursively get predictions for input models using the SAME EXACT version
-        input_pred_1_result = get_prediction(feeder_id, target_date, input_models[0], scenario, actual_version_used)
-        input_pred_2_result = get_prediction(feeder_id, target_date, input_models[1], scenario, actual_version_used)
-
-        if input_pred_1_result is None or input_pred_2_result is None:
-            raise RuntimeError(f"Failed to get predictions for one or both input models for {model_arch} (Version: {actual_version_used})")
-
-        input_pred_1 = input_pred_1_result[0]  # Prediction array
-        input_pred_2 = input_pred_2_result[0]  # Prediction array
+            print("Warning: Actuals columns mismatch RLS target columns. Reordering.")
+            y_actual_original_target_day = y_actual_original_target_day[target_columns_final]
+        actuals_np_orig = y_actual_original_target_day.values
+        # --- End Prepare Actuals ---
 
         # Check shape consistency before combining
-        if input_pred_1.shape != actuals_np.shape or input_pred_2.shape != actuals_np.shape:
+        if input_pred_1_orig.shape != actuals_np_orig.shape or input_pred_2_orig.shape != actuals_np_orig.shape:
             raise ValueError(
-                f"Shape mismatch before RLS combination: Actuals={actuals_np.shape}, Pred1={input_pred_1.shape}, Pred2={input_pred_2.shape}"
+                f"Shape mismatch before RLS combination: Actuals={actuals_np_orig.shape}, Pred1={input_pred_1_orig.shape}, Pred2={input_pred_2_orig.shape}"
             )
 
-        # Combine predictions using loaded RLS filters AND provide actuals for adaptation
-        print(f"Combining predictions for {model_arch} using RLS filters (with adaptation)...")
-        final_prediction_original = predict_with_padasip_rls(rls_filters, actuals_np, input_pred_1, input_pred_2)  # Pass the fetched actuals
-        # target_columns_final already set from RLS artifact
+        # Combine predictions using RLS (function now handles scaling internally)
+        print(f"Combining predictions for {model_arch} using RLS filters (with internal scaling/adaptation)...")
+        final_prediction_original = predict_with_padasip_rls(
+            rls_filters,
+            y_scaler_to_use,  # Pass the scaler
+            actuals_np_orig,  # Pass original actuals
+            input_pred_1_orig,  # Pass original predictions
+            input_pred_2_orig,
+        )
 
     # --- Case 2: Base Model Artifact (LGBM, Keras) ---
     elif "model" in loaded_artifact and loaded_artifact.get("model") is not None:
-        # --- This block remains the same as before ---
+        # --- This block remains the same - it produces original scale predictions ---
         print(f"Processing base model artifact for {model_arch} (Version: {actual_version_used})...")
         model = loaded_artifact["model"]
         x_scaler = loaded_artifact["x_scaler"]
@@ -630,6 +938,8 @@ def get_prediction(feeder_id, target_date, architecture, scenario, version=None)
             if X_original_target_day.empty:
                 raise ValueError(f"Could not retrieve original X data for change conversion ({model_arch}).")
             final_prediction_original = convert_change_in_load_to_base_load(X_original_target_day, y_pred_original)
+        # Store the y_scaler used by this base model for potential use by RLS later
+        y_scaler_to_use = y_scaler
         # --- End of Base Model block ---
 
     # --- Case 3: Unknown Artifact Type ---
@@ -640,8 +950,8 @@ def get_prediction(feeder_id, target_date, architecture, scenario, version=None)
     if final_prediction_original is None:
         raise ValueError(f"Failed to generate final prediction for {cache_key}")
 
-    # Return prediction, target columns, and the specific model ID used
-    result = (final_prediction_original, target_columns_final, actual_model_id)
+    # Return prediction, target columns, model ID, and the y_scaler used (for RLS case)
+    result = (final_prediction_original, target_columns_final, actual_model_id, y_scaler_to_use)
     _prediction_cache[cache_key] = result
     print(f"Prediction computed and cached for: {cache_key}")
     return result

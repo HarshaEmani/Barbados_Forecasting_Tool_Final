@@ -1,7 +1,7 @@
 try:
     import tensorflow as tf
     from keras.models import Sequential, save_model, load_model
-    from keras.layers import Dense, LSTM, Input, Dropout
+    from keras.layers import Dense, LSTM, Input, Dropout, Layer, Lambda
     from keras.callbacks import EarlyStopping
     from padasip.filters import FilterRLS
     from sklearn.multioutput import MultiOutputRegressor
@@ -20,6 +20,8 @@ try:
     import traceback
     import plotly.express as px
     from dotenv import load_dotenv, find_dotenv
+
+    # from Trainer_Utils import NormalizeLayer
 
     KERAS_AVAILABLE = True
     PADASIP_AVAILABLE = True
@@ -66,6 +68,37 @@ script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals(
 TEMP_DIR = os.path.join(script_dir, "tmp")
 
 
+class NormalizeLayer(Layer):
+    def __init__(self, mean, std, normalize=True, **kwargs):
+        super().__init__(**kwargs)
+        self.mean = tf.constant(mean, dtype=tf.float32)
+        self.std = tf.constant(std, dtype=tf.float32)
+        self.normalize = normalize
+
+    def call(self, inputs):
+        if self.normalize:
+            return (inputs - self.mean) / (self.std + 1e-8)
+        else:
+            return (inputs * self.std) + self.mean
+
+    def get_config(self):
+        config = super().get_config().copy()
+        config.update(
+            {
+                "mean": self.mean.numpy().tolist(),
+                "std": self.std.numpy().tolist(),
+                "normalize": self.normalize,
+            }
+        )
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        mean = config.pop("mean")
+        std = config.pop("std")
+        return cls(mean=mean, std=std, **config)
+
+
 # --- Database Interaction Functions ---
 def fetch_data(feeder_id, start_date, end_date):
     """Fetches combined feeder and weather data from Supabase."""
@@ -75,7 +108,8 @@ def fetch_data(feeder_id, start_date, end_date):
     try:
         supabase.postgrest.schema(DATA_SCHEMA)
         response = (
-            supabase.table(f"Feeder_Weather_Combined_Data")
+            supabase.schema(DATA_SCHEMA)
+            .table(f"Feeder_Weather_Combined_Data")
             .select("*")
             .eq("Feeder_ID", feeder_id)
             .gte("Timestamp", start_date)
@@ -96,12 +130,114 @@ def fetch_data(feeder_id, start_date, end_date):
         raise
 
 
+def fetch_input_data_with_options(feeder_id, start_date, end_date, columns=None):
+    """Fetches data with optional filtering by columns, model, and scenario."""
+    print(f"Fetching data for Feeder {feeder_id} from {start_date} to {end_date}...")
+    end_date_dt = pd.to_datetime(end_date) + timedelta(days=1)  # Include the end date in the range
+    end_date_str = end_date_dt.strftime("%Y-%m-%d %H:%M:%S%z")
+    try:
+        supabase.postgrest.schema(DATA_SCHEMA)
+        query = (
+            supabase.schema(DATA_SCHEMA)
+            .table(f"Feeder_Weather_Combined_Data")
+            .select("*")
+            .eq("Feeder_ID", feeder_id)
+            .gte("Timestamp", start_date)
+            .lt("Timestamp", end_date_str)
+            .order("Timestamp", desc=False)
+        )
+
+        if columns:
+            query = query.select(columns)
+
+        # if model:
+        #     query = query.eq("model_architecture_type", model)
+
+        # if scenario:
+        #     query = query.eq("scenario_type", scenario)
+
+        response = query.execute()
+        if not response.data:
+            print(f"Warning: No data found for Feeder {feeder_id} in the specified range.")
+            return pd.DataFrame()
+        df = pd.DataFrame(response.data)
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+        df = df.set_index("Timestamp")
+        print(f"Fetched {len(df)} records.")
+        return df
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        raise
+
+
+def fetch_forecast_data_with_options(feeder_id, start_date, end_date, columns=None, model=None, scenario=None):
+    """Fetches data with optional filtering by columns, model, and scenario."""
+    print(f"Fetching data for Feeder {feeder_id} from {start_date} to {end_date}...")
+
+    end_date_dt = pd.to_datetime(end_date) + timedelta(days=1)  # Include the end date in the range
+    end_date_str = end_date_dt.strftime("%Y-%m-%d %H:%M:%S%z")
+    try:
+        supabase.postgrest.schema(ML_SCHEMA)
+
+        model_id_query = (
+            supabase.schema(ML_SCHEMA)
+            .table("models")
+            .select("model_id")
+            .eq("feeder_id", feeder_id)
+            .eq("model_architecture_type", model)
+            .eq("scenario_type", scenario)
+            .execute()
+        )
+
+        # if model:
+        #     model_id_query = model_id_query.eq("model_architecture_type", model)
+
+        # if scenario:
+        #     model_id_query = model_id_query.eq("scenario_type", scenario)
+
+        response = model_id_query
+
+        if not response.data:
+            print(f"Warning: No model found for Feeder {feeder_id} with specified criteria.")
+            return pd.DataFrame()
+
+        model_id = response.data[-1]["model_id"]
+        print(f"Model ID: {model_id}")
+
+        query = (
+            supabase.schema(ML_SCHEMA)
+            .table(f"forecasts")
+            .select("*")
+            .eq("feeder_id", feeder_id)
+            .eq("model_id", model_id)
+            .gte("target_timestamp", start_date)
+            .lt("target_timestamp", end_date_str)
+            .order("target_timestamp", desc=False)
+        )
+
+        # if columns:
+        #     query = query.select(columns)
+
+        response = query.execute()
+        if not response.data:
+            print(f"Warning: No data found for Feeder {feeder_id} in the specified range.")
+            return pd.DataFrame()
+        df = pd.DataFrame(response.data)
+        df["target_timestamp"] = pd.to_datetime(df["target_timestamp"])
+        df = df.set_index("target_timestamp")
+        print(f"Fetched {len(df)} records.")
+        return df
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        raise
+
+
 def get_all_feeder_ids(supabase_client: Client):
     """Fetches all Feeder_ID values from the metadata table."""
     print("Fetching list of Feeder IDs...")
     try:
         supabase_client.postgrest.schema(METADATA_SCHEMA)
-        response = supabase_client.table("Feeders_Metadata").select("Feeder_ID").execute()
+        response = supabase_client.schema(METADATA_SCHEMA).table("Feeders_Metadata").select("Feeder_ID").execute()
         if response.data:
             feeder_ids = [item["Feeder_ID"] for item in response.data]
             print(f"Found {len(feeder_ids)} feeders: {feeder_ids}")
@@ -122,7 +258,7 @@ def log_model_metadata(metadata):
     print(f"Logging metadata for model: {metadata.get('model_artifact_path')}")
     try:
         supabase.postgrest.schema(ML_SCHEMA)
-        response = supabase.table(f"models").insert(metadata).execute()
+        response = supabase.schema(ML_SCHEMA).table(f"models").insert(metadata).execute()
         if hasattr(response, "data") and response.data:
             print("Metadata logged successfully.")
             return response.data[0]["model_id"]
@@ -187,7 +323,7 @@ def select_model_for_forecast(feeder_id, architecture=None, scenario=None, versi
     print(f"Selecting model for Feeder {feeder_id}, Arch: {architecture}, Scenario: {scenario}, Version: {version}")
     try:
         supabase.postgrest.schema(ML_SCHEMA)
-        query = supabase.table("models").select("*").eq("feeder_id", feeder_id)
+        query = supabase.schema(ML_SCHEMA).table("models").select("*").eq("feeder_id", feeder_id)
 
         # Add filters based on provided arguments
         if architecture:
@@ -264,7 +400,7 @@ def store_forecasts(model_id, feeder_id, forecast_run_timestamp, target_date, pr
             for i, ts in enumerate(target_timestamps)
         ]
         supabase.postgrest.schema(ML_SCHEMA)
-        response = supabase.table("forecasts").insert(records_to_insert).execute()
+        response = supabase.schema(ML_SCHEMA).table("forecasts").insert(records_to_insert).execute()
         if hasattr(response, "data") and response.data:
             print(f"Successfully inserted {len(response.data)} forecast records.")
         elif hasattr(response, "error") and response.error:
@@ -311,7 +447,7 @@ def load_artifact_from_storage(artifact_path_info):
                 res = supabase.storage.from_(STORAGE_BUCKET).download(keras_model_path)
                 f.write(res)
             print("Keras model downloaded. Loading...")
-            loaded_model = load_model(local_keras_temp_path)
+            loaded_model = load_model(local_keras_temp_path, custom_objects={"NormalizeLayer": NormalizeLayer})
             print("Keras model loaded.")
         if scalers_pkl_path:
             print(f"Downloading scalers pickle to: {local_scalers_temp_path}")
@@ -365,3 +501,101 @@ def load_artifact_from_storage(artifact_path_info):
                     print(f"Cleaned up temporary file: {temp_path}")
                 except OSError as rm_err:
                     print(f"Error removing temporary file {temp_path}: {rm_err}")
+
+
+# Add this function (e.g., in DB_Utils.py or the main script)
+
+
+def store_validation_results(model_id, feeder_id, validation_run_timestamp, y_val_actual_df, y_pred_val_original_np, target_columns):
+    """
+    Formats and inserts validation results (actuals and predictions) into ml.Forecasts.
+
+    Args:
+        model_id (int): The ID of the model artifact that generated the predictions.
+        feeder_id (int): The Feeder ID.
+        validation_run_timestamp (str): ISO format timestamp when validation was run.
+        y_val_actual_df (pd.DataFrame): DataFrame of actual validation values (index=date, columns=hourly targets).
+        y_pred_val_original_np (np.array): Numpy array of predicted validation values (original scale).
+        target_columns (list): List of target column names (e.g., ['Net_Load_Demand_Hour_6', ...]).
+    """
+    print(f"Storing validation results for Model ID: {model_id}, Feeder: {feeder_id}...")
+
+    if y_val_actual_df.empty or y_pred_val_original_np.size == 0:
+        print("Warning: Empty actuals or predictions provided for validation storage.")
+        return
+    if y_val_actual_df.shape != y_pred_val_original_np.shape:
+        print(
+            f"ERROR: Shape mismatch between validation actuals ({y_val_actual_df.shape}) and predictions ({y_pred_val_original_np.shape}). Cannot store."
+        )
+        return
+    if list(y_val_actual_df.columns) != target_columns:
+        print(f"ERROR: Target columns list does not match actuals DataFrame columns.")
+        # Attempt reorder? Or just error out. Erroring out is safer.
+        # print("Actual Columns:", list(y_val_actual_df.columns))
+        # print("Target Columns:", target_columns)
+        return
+
+    records_to_insert = []
+    num_days, num_hours = y_val_actual_df.shape
+
+    try:
+        # Extract actual hours from target columns
+        actual_hours = sorted([int(col.split("_Hour_")[-1]) for col in target_columns])
+        if len(actual_hours) != num_hours:
+            raise ValueError("Could not parse correct number of hours from target columns.")
+
+        # Iterate through each day in the validation set
+        for day_idx, target_date in enumerate(y_val_actual_df.index):
+            # Ensure target_date is a date object if it's datetime
+            if isinstance(target_date, pd.Timestamp):
+                target_date = target_date.date()
+
+            # Iterate through each hour predicted for that day
+            for hour_idx, hour_of_day in enumerate(actual_hours):
+                target_timestamp = datetime.combine(target_date, datetime.min.time(), tzinfo=timezone.utc) + timedelta(hours=hour_of_day)
+                actual_value = y_val_actual_df.iloc[day_idx, hour_idx]
+                forecast_value = y_pred_val_original_np[day_idx, hour_idx]
+
+                # Skip if actual value is NaN (can happen with data gaps)
+                if pd.isna(actual_value):
+                    continue
+
+                records_to_insert.append(
+                    {
+                        "model_id": model_id,
+                        "feeder_id": feeder_id,
+                        "forecast_run_timestamp": validation_run_timestamp,  # Timestamp of the validation run
+                        "target_timestamp": target_timestamp.isoformat(),
+                        "forecast_value": float(forecast_value) if not pd.isna(forecast_value) else None,  # Store prediction
+                        "actual_value": float(actual_value),  # Store actual
+                    }
+                )
+
+        if not records_to_insert:
+            print("No valid records generated for validation storage.")
+            return
+
+        # Insert into database
+        print(f"Inserting {len(records_to_insert)} validation records into ml.Forecasts...")
+        supabase.postgrest.schema(ML_SCHEMA)
+        # Consider chunking inserts if len(records_to_insert) is very large (e.g., > 1000)
+        response = supabase.schema(ML_SCHEMA).table("forecasts").insert(records_to_insert).execute()
+
+        # Check response
+        if hasattr(response, "data") and response.data:
+            print(f"Successfully inserted {len(response.data)} validation records.")
+        elif hasattr(response, "error") and response.error:
+            print(f"Error inserting validation results: {response.error}")
+            # Handle potential conflicts (e.g., unique constraint violation if re-running)
+            if "23505" in str(response.error):
+                print("Hint: Validation results for this model/feeder/target_timestamp might already exist.")
+            # Don't raise exception here, just log error during training run
+        elif not hasattr(response, "error") and not hasattr(response, "data"):
+            print(f"Validation results inserted (assumed based on response, count unknown).")
+        else:
+            print(f"Unknown error inserting validation results. Response: {response}")
+
+    except Exception as e:
+        print(f"Error formatting or storing validation results: {e}")
+        traceback.print_exc()
+        # Don't raise exception, allow training run to continue if possible

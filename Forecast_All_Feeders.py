@@ -82,12 +82,14 @@ TEMP_DIR = os.path.join(script_dir, "tmp")  # Define TEMP_DIR if not imported
 # Choose which architectures you want to generate forecasts FOR.
 # Typically, you'd run the final ones, maybe a baseline for comparison.
 ARCHITECTURES_TO_FORECAST = [
-    "LightGBM_Baseline",
-    "LSTM_RLS_Combined",
+    # "LightGBM_Baseline",
+    "LSTM_Change_in_Load",
+    # "LSTM_RLS_Combined",
     # Add other architectures (e.g., 'LSTM_Baseload') if needed
 ]
 
-SCENARIOS_TO_FORECAST = ["24hr", "Day", "Night"]
+# SCENARIOS_TO_FORECAST = ["24hr", "Day", "Night"]
+SCENARIOS_TO_FORECAST = ["24hr"]
 
 
 # --- PASTE REQUIRED HELPER FUNCTIONS HERE ---

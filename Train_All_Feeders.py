@@ -1,3 +1,27 @@
+# import tensorflow as tf
+# from keras.models import Sequential, save_model, load_model
+# from keras.layers import Dense, LSTM, Input, Dropout
+# from keras.callbacks import EarlyStopping
+# from padasip.filters import FilterRLS
+# from sklearn.multioutput import MultiOutputRegressor
+# from lightgbm import LGBMRegressor
+# import pandas as pd
+# import numpy as np
+# from datetime import datetime, timedelta, timezone
+# import json
+# import pickle
+# import os
+# import sys
+# import argparse
+# from sklearn.preprocessing import MinMaxScaler
+# from sklearn.metrics import mean_absolute_error, mean_squared_error
+# from Trainer_Utils import run_training
+# from DB_Utils import fetch_data, save_pickle_artifact, log_model_metadata, train
+# from supabase import create_client, Client
+# import traceback
+# import plotly.express as px
+# from dotenv import load_dotenv, find_dotenv
+
 try:
     import tensorflow as tf
     from keras.models import Sequential, save_model, load_model
@@ -16,8 +40,8 @@ try:
     import argparse
     from sklearn.preprocessing import MinMaxScaler
     from sklearn.metrics import mean_absolute_error, mean_squared_error
-    from Trainer_Utils import run_training, get_all_feeder_ids
-    from DB_Utils import fetch_data, save_pickle_artifact, log_model_metadata
+    from Trainer_Utils import run_training
+    from DB_Utils import fetch_data, save_pickle_artifact, log_model_metadata, get_all_feeder_ids
     from supabase import create_client, Client
     import traceback
     import plotly.express as px
@@ -57,7 +81,7 @@ METADATA_SCHEMA = "metadata"
 STORAGE_BUCKET = "models"
 FEEDER_ID_TO_TRAIN = 1
 SCENARIO = "Day"  # Example
-MODEL_VERSION = "v1.1_Is_Weekend"  # Updated version
+MODEL_VERSION = "v1.2_Final_Forecasting"  # Updated version
 TRAIN_START_DATE = "2024-01-01 00:00:00+00"
 TRAIN_END_DATE = "2024-05-31 23:59:59+00"
 VALIDATION_START_DATE = "2024-06-01 00:00:00+00"
@@ -66,22 +90,23 @@ DAY_HOURS = list(range(6, 20 + 1))
 NIGHT_HOURS = list(range(0, 6)) + list(range(21, 24))
 script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
 TEMP_DIR = os.path.join(script_dir, "tmp")
-BASE_MODEL_VERSION_PREFIX = "v1.0_automated_training"  # Prefix for model versioning
+BASE_MODEL_VERSION_PREFIX = "v1.1_Final_Forecasting"  # Prefix for model versioning
 
 # --- Define Architectures and Scenarios to Run ---
 # List all model architectures defined in your run_training function
 ARCHITECTURES_TO_RUN = [
-    'LightGBM_Baseline',
-    'ANN_Baseload',
-    'ANN_Change_in_Load',
-    'LSTM_Baseload',
-    'LSTM_Change_in_Load',
-    'ANN_RLS_Combined',
-    'LSTM_RLS_Combined',
-    'Final_RLS_Combined'
+    "LightGBM_Baseline",
+    # "ANN_Baseload",
+    # "ANN_Change_in_Load",
+    "LSTM_Baseload",
+    "LSTM_Change_in_Load",
+    # 'ANN_RLS_Combined',
+    "LSTM_RLS_Combined",
+    # 'Final_RLS_Combined'
 ]
 
-SCENARIOS_TO_RUN = ['24hr', 'Day', 'Night']
+# SCENARIOS_TO_RUN = ["24hr", "Day", "Night"]
+SCENARIOS_TO_RUN = ["24hr"]
 
 
 # --- Main Execution Block ---
@@ -112,7 +137,7 @@ if __name__ == "__main__":
                 print(f"\n--- ({run_counter}/{total_runs}) Processing: Feeder={feeder_id}, Arch={architecture}, Scenario={scenario} ---")
 
                 # Generate a unique version tag for this specific run
-                timestamp_version = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+                timestamp_version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
                 dynamic_version = f"{BASE_MODEL_VERSION_PREFIX}_{timestamp_version}"
 
                 try:
@@ -121,7 +146,7 @@ if __name__ == "__main__":
                         feeder_id=feeder_id,
                         model_arch=architecture,
                         scenario=scenario,
-                        version=dynamic_version, # Use the unique version
+                        version=dynamic_version,  # Use the unique version
                         train_start=TRAIN_START_DATE,
                         train_end=TRAIN_END_DATE,
                         val_start=VALIDATION_START_DATE,
@@ -129,13 +154,15 @@ if __name__ == "__main__":
                     )
                     print(f"--- Successfully completed run ({run_counter}/{total_runs}) ---")
 
+                    # sys.exit(0)  # Exit after the first successful run for testing purposes
+
                 except Exception as e:
                     error_counter += 1
                     print(f"!!! ERROR during run ({run_counter}/{total_runs}) for Feeder={feeder_id}, Arch={architecture}, Scenario={scenario} !!!")
                     print(f"Error message: {e}")
                     traceback.print_exc()
                     print(f"--- Skipping to next combination ---")
-                    continue # Continue to the next iteration even if one fails
+                    continue  # Continue to the next iteration even if one fails
 
     print("\n--- Automated Training Run Finished ---")
     print(f"Total combinations processed: {run_counter}")
