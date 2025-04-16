@@ -1,13 +1,13 @@
 #!/bin/bash
 
-cd /app  # inside container working dir
+# cd /app  # inside container working dir
 
 # File path inside the mounted volume
-LAST_DATE_FILE="data/Last_Forecast_Date.txt"
+LAST_DATE_FILE="Last_Forecast_Date.txt"
 
 # Initialize with first test date if file doesn't exist
 if [ ! -f "$LAST_DATE_FILE" ]; then
-    echo "2025-07-01" > "$LAST_DATE_FILE"
+    echo "2024-07-01" > "$LAST_DATE_FILE"
     echo "Initialized with first test date"
 fi
 
@@ -16,13 +16,13 @@ LAST_DATE=$(cat "$LAST_DATE_FILE")
 NEXT_DATE=$(date -I -d "$LAST_DATE + 1 day")
 
 # Stop if date exceeds test range
-if [ "$NEXT_DATE" \> "2025-07-03" ]; then
+if [ "$NEXT_DATE" \> "2024-07-05" ]; then
     echo "All forecasts completed."
     exit 0
 fi
 
 # Run the Python forecast script with --target_date
-conda run -n forecast-env python3 forecast.py --target_date "$NEXT_DATE"
+conda run -n Barbados python Forecast_All_Feeders.py "$NEXT_DATE"
 
 # Update the date file
 echo "$NEXT_DATE" > "$LAST_DATE_FILE"

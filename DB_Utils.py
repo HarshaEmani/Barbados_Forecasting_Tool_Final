@@ -118,6 +118,38 @@ def fetch_data(feeder_id, start_date, end_date):
             .execute()
         )
         if not response.data:
+            print(response.data)
+            print(DATA_SCHEMA, feeder_id, start_date, end_date_str)
+            print(f"Warning: No data found for Feeder {feeder_id} in the specified range.")
+            return pd.DataFrame()
+        df = pd.DataFrame(response.data)
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+        df = df.set_index("Timestamp")
+        print(f"Fetched {len(df)} records.")
+        return df
+    except Exception as e:
+        print(f"Error fetching data: {e}")
+        raise
+
+
+def fetch_feeder_data(feeder_id, start_date, end_date):
+    """Fetches combined feeder and weather data from Supabase."""
+    print(f"Fetching data for Feeder {feeder_id} from {start_date} to {end_date}...")
+    end_date_dt = pd.to_datetime(end_date) + timedelta(days=1)  # Include the end date in the range
+    end_date_str = end_date_dt.strftime("%Y-%m-%d %H:%M:%S%z")
+    try:
+        supabase.postgrest.schema(DATA_SCHEMA)
+        response = (
+            supabase.schema(DATA_SCHEMA)
+            .table(f"Feeder_Weather_Combined_Data")
+            .select("Net_Load_Demand, Timestamp")
+            .eq("Feeder_ID", feeder_id)
+            .gte("Timestamp", start_date)
+            .lt("Timestamp", end_date_str)
+            .order("Timestamp", desc=False)
+            .execute()
+        )
+        if not response.data:
             print(f"Warning: No data found for Feeder {feeder_id} in the specified range.")
             return pd.DataFrame()
         df = pd.DataFrame(response.data)

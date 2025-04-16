@@ -106,7 +106,7 @@ ARCHITECTURES_TO_RUN = [
 ]
 
 # SCENARIOS_TO_RUN = ["24hr", "Day", "Night"]
-SCENARIOS_TO_RUN = ["24hr"]
+SCENARIOS_TO_RUN = ["Day", "Night"]
 
 
 # --- Main Execution Block ---

@@ -1,0 +1,246 @@
+Default Parameters - Full_Day_Train:
+
+Fetching list of Feeder IDs...
+Found 12 feeders: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+Metrics for Feeder ID 1:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.051421  0.087388  38.154532
+lstm_rls_forecast     0.044635  0.079368  34.081651
+lstm_change_forecast  0.053967  0.091514  34.869295
+
+Metrics for Feeder ID 2:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.040894  0.084653   6.599724
+lstm_rls_forecast     0.034660  0.057227   5.973074
+lstm_change_forecast  0.072815  0.129150  11.814840
+
+Metrics for Feeder ID 3:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.053131  0.098316  20.834767
+lstm_rls_forecast     0.052852  0.098799  21.590158
+lstm_change_forecast  0.055094  0.096535  24.264605
+
+Metrics for Feeder ID 4:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.168146  0.197609  28.025164
+lstm_rls_forecast     0.115824  0.144766  17.939837
+lstm_change_forecast  0.109030  0.163287  17.879682
+
+Metrics for Feeder ID 5:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.046051  0.084022  25.909660
+lstm_rls_forecast     0.044778  0.077984  24.367101
+lstm_change_forecast  0.062522  0.105813  32.282257
+
+Metrics for Feeder ID 6:
+                           MAE      RMSE     SMAPE
+lightgbm_forecast     0.093846  0.123676  5.358115
+lstm_rls_forecast     0.110122  0.152507  6.297395
+lstm_change_forecast  0.112867  0.148327  6.499849
+
+Metrics for Feeder ID 7:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.045845  0.089291   6.570342
+lstm_rls_forecast     0.046923  0.093554   6.833708
+lstm_change_forecast  0.081729  0.144251  11.409807
+
+Metrics for Feeder ID 8:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.063669  0.094246  10.033719
+lstm_rls_forecast     0.064889  0.103266   9.881508
+lstm_change_forecast  0.083152  0.132738  12.127941
+
+Metrics for Feeder ID 9:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.046955  0.080166   8.453698
+lstm_rls_forecast     0.040327  0.076233   6.804331
+lstm_change_forecast  0.058272  0.104480  10.501075
+
+Metrics for Feeder ID 10:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.040665  0.062446  25.478898
+lstm_rls_forecast     0.040293  0.061404  24.083931
+lstm_change_forecast  0.055901  0.085707  32.958618
+
+Metrics for Feeder ID 11:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.043722  0.088784   9.227509
+lstm_rls_forecast     0.038723  0.072440   8.789903
+lstm_change_forecast  0.075201  0.131959  14.526871
+
+Metrics for Feeder ID 12:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.073593  0.103918  15.447900
+lstm_rls_forecast     0.051653  0.081120  11.147799
+lstm_change_forecast  0.084622  0.121182  18.344779
+
+MAE DataFrame:
+           lightgbm_forecast  lstm_rls_forecast  lstm_change_forecast
+feeder_1            0.051421           0.044635              0.053967
+feeder_2            0.040894           0.034660              0.072815
+feeder_3            0.053131           0.052852              0.055094
+feeder_4            0.168146           0.115824              0.109030
+feeder_5            0.046051           0.044778              0.062522
+feeder_6            0.093846           0.110122              0.112867
+feeder_7            0.045845           0.046923              0.081729
+feeder_8            0.063669           0.064889              0.083152
+feeder_9            0.046955           0.040327              0.058272
+feeder_10           0.040665           0.040293              0.055901
+feeder_11           0.043722           0.038723              0.075201
+feeder_12           0.073593           0.051653              0.084622
+
+RMSE DataFrame:
+           lightgbm_forecast  lstm_rls_forecast  lstm_change_forecast
+feeder_1            0.087388           0.079368              0.091514
+feeder_2            0.084653           0.057227              0.129150
+feeder_3            0.098316           0.098799              0.096535
+feeder_4            0.197609           0.144766              0.163287
+feeder_5            0.084022           0.077984              0.105813
+feeder_6            0.123676           0.152507              0.148327
+feeder_7            0.089291           0.093554              0.144251
+feeder_8            0.094246           0.103266              0.132738
+feeder_9            0.080166           0.076233              0.104480
+feeder_10           0.062446           0.061404              0.085707
+feeder_11           0.088784           0.072440              0.131959
+feeder_12           0.103918           0.081120              0.121182
+
+SMAPE DataFrame:
+           lightgbm_forecast  lstm_rls_forecast  lstm_change_forecast
+feeder_1           38.154532          34.081651             34.869295
+feeder_2            6.599724           5.973074             11.814840
+feeder_3           20.834767          21.590158             24.264605
+feeder_4           28.025164          17.939837             17.879682
+feeder_5           25.909660          24.367101             32.282257
+feeder_6            5.358115           6.297395              6.499849
+feeder_7            6.570342           6.833708             11.409807
+feeder_8           10.033719           9.881508             12.127941
+feeder_9            8.453698           6.804331             10.501075
+feeder_10          25.478898          24.083931             32.958618
+feeder_11           9.227509           8.789903             14.526871
+feeder_12          15.447900          11.147799             18.344779
+
+
+
+Split_Day_Train:
+
+
+Fetching list of Feeder IDs...
+Found 12 feeders: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+
+Metrics for Feeder ID 1:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.050168  0.086242  37.006306
+lstm_rls_forecast     0.046458  0.080085  34.163055
+lstm_change_forecast  0.053033  0.087558  34.938510
+
+Metrics for Feeder ID 2:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.049401  0.092068   7.717219
+lstm_rls_forecast     0.066311  0.117669  10.912635
+lstm_change_forecast  0.075501  0.133498  11.857942
+
+Metrics for Feeder ID 3:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.050575  0.092706  20.183613
+lstm_rls_forecast     0.047797  0.089092  19.287525
+lstm_change_forecast  0.049881  0.088047  22.610856
+
+Metrics for Feeder ID 4:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.165446  0.195757  28.067696
+lstm_rls_forecast     0.098566  0.131602  15.689002
+lstm_change_forecast  0.093379  0.139797  15.050489
+
+Metrics for Feeder ID 5:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.047981  0.085700  27.912738
+lstm_rls_forecast     0.052681  0.085803  29.068620
+lstm_change_forecast  0.059273  0.100127  30.920402
+
+Metrics for Feeder ID 6:
+                           MAE     RMSE     SMAPE
+lightgbm_forecast     0.098914  0.13179  5.669559
+lstm_rls_forecast     0.101349  0.13526  5.771509
+lstm_change_forecast  0.116102  0.15156  6.671490
+
+Metrics for Feeder ID 7:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.050259  0.094239   7.192106
+lstm_rls_forecast     0.073113  0.126603  10.503127
+lstm_change_forecast  0.074571  0.129336  10.761257
+
+Metrics for Feeder ID 8:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.061297  0.093186   9.575622
+lstm_rls_forecast     0.078227  0.125610  11.937813
+lstm_change_forecast  0.080219  0.130203  12.159127
+
+Metrics for Feeder ID 9:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.048104  0.083544   8.772239
+lstm_rls_forecast     0.042108  0.079309   7.229508
+lstm_change_forecast  0.055669  0.102947  10.085143
+
+Metrics for Feeder ID 10:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.041458  0.061967  27.299955
+lstm_rls_forecast     0.041131  0.063081  24.557782
+lstm_change_forecast  0.054209  0.082177  32.107482
+
+Metrics for Feeder ID 11:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.046417  0.095986   9.484506
+lstm_rls_forecast     0.063211  0.117729  13.674018
+lstm_change_forecast  0.067506  0.119597  14.110723
+
+Metrics for Feeder ID 12:
+                           MAE      RMSE      SMAPE
+lightgbm_forecast     0.074221  0.107296  16.182016
+lstm_rls_forecast     0.071234  0.111395  15.962706
+lstm_change_forecast  0.073458  0.111216  16.656596
+
+MAE DataFrame:
+           lightgbm_forecast  lstm_rls_forecast  lstm_change_forecast
+feeder_1            0.050168           0.046458              0.053033
+feeder_2            0.049401           0.066311              0.075501
+feeder_3            0.050575           0.047797              0.049881
+feeder_4            0.165446           0.098566              0.093379
+feeder_5            0.047981           0.052681              0.059273
+feeder_6            0.098914           0.101349              0.116102
+feeder_7            0.050259           0.073113              0.074571
+feeder_8            0.061297           0.078227              0.080219
+feeder_9            0.048104           0.042108              0.055669
+feeder_10           0.041458           0.041131              0.054209
+feeder_11           0.046417           0.063211              0.067506
+feeder_12           0.074221           0.071234              0.073458
+
+RMSE DataFrame:
+           lightgbm_forecast  lstm_rls_forecast  lstm_change_forecast
+feeder_1            0.086242           0.080085              0.087558
+feeder_2            0.092068           0.117669              0.133498
+feeder_3            0.092706           0.089092              0.088047
+feeder_4            0.195757           0.131602              0.139797
+feeder_5            0.085700           0.085803              0.100127
+feeder_6            0.131790           0.135260              0.151560
+feeder_7            0.094239           0.126603              0.129336
+feeder_8            0.093186           0.125610              0.130203
+feeder_9            0.083544           0.079309              0.102947
+feeder_10           0.061967           0.063081              0.082177
+feeder_11           0.095986           0.117729              0.119597
+feeder_12           0.107296           0.111395              0.111216
+
+SMAPE DataFrame:
+           lightgbm_forecast  lstm_rls_forecast  lstm_change_forecast
+feeder_1           37.006306          34.163055             34.938510
+feeder_2            7.717219          10.912635             11.857942
+feeder_3           20.183613          19.287525             22.610856
+feeder_4           28.067696          15.689002             15.050489
+feeder_5           27.912738          29.068620             30.920402
+feeder_6            5.669559           5.771509              6.671490
+feeder_7            7.192106          10.503127             10.761257
+feeder_8            9.575622          11.937813             12.159127
+feeder_9            8.772239           7.229508             10.085143
+feeder_10          27.299955          24.557782             32.107482
+feeder_11           9.484506          13.674018             14.110723
+feeder_12          16.182016          15.962706             16.656596

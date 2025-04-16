@@ -345,6 +345,66 @@ def train_ann_model(
     print(f"ANN Model training complete. Validation Metrics (Original Scale): {validation_metrics}")
     return ann_model, validation_metrics, y_pred_train_original, y_pred_val_original
 
+def get_X_y_stats_tensors(X_train, y_train):
+    X_mean = K.constant(X_train.mean(axis=0))
+    X_std = K.constant(X_train.std(axis=0))
+    X_min = K.constant(X_train.min(axis=0))
+    X_max = K.constant(X_train.max(axis=0))
+
+    y_mean = K.constant(y_train.mean(axis=0))
+    y_std = K.constant(y_train.std(axis=0))
+    y_min = K.constant(y_train.min(axis=0))
+    y_max = K.constant(y_train.max(axis=0))
+    
+    return X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max
+
+def build_base_lstm_model(X_train, y_train, X_test, y_test):
+    """Builds a simple LSTM model."""
+    
+    X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max = get_X_y_stats_tensors(X_train, y_train)
+    
+    lstm_model = Sequential()
+    lstm_model.add(Input(shape=(X_train.shape[1:])))
+    # lstm_model.add(Lambda(lambda x: (x - X_mean) / (X_std + 1e-8), name="input_normalization"))
+    lstm_model.add(NormalizeLayer(X_mean, X_std, normalize=True, name="input_normalization")),
+    # Dense(128, activation="relu", kernel_regularizer=keras.regularizers.l2(0.1))
+    lstm_model.add(LSTM(128, return_sequences=False))
+    # lstm_model.add(Dense(50, activation="sigmoid"))
+    lstm_model.add(Dropout(0.5))
+    lstm_model.add(Dense(y_train.shape[1]))
+    lstm_model.add(NormalizeLayer(y_mean, y_std, normalize=False, name="output_denormalization")),
+    return lstm_model
+    
+
+def build_lstm_model_with_hyperparameters(X_train, y_train, X_test, y_test, hyperparameters):
+    X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max = get_X_y_stats_tensors(X_train, y_train)
+    
+    model = Sequential()
+    model.add(Input(shape=(X_train.shape[1:])))
+    model.add(NormalizeLayer(X_mean, X_std, normalize=True, name="input_normalization")),
+    # Add LSTM layers
+    for i in range(hyperparameters['n_lstm_layers']):
+        return_sequences = True if i < hyperparameters['n_lstm_layers'] - 1 else False
+        
+        if i == 0:
+            model.add(LSTM(hyperparameters['lstm_units'], 
+                           return_sequences=return_sequences,
+                           dropout=hyperparameters.get(f'lstm_dropout_{i}', 0.0),))
+        else:
+            model.add(LSTM(hyperparameters['lstm_units'], 
+                           return_sequences=return_sequences, 
+                           dropout=hyperparameters.get(f'lstm_dropout_{i}', 0.0)))
+
+    # Add Dense layers
+    for i in range(hyperparameters['n_dense_layers']):
+        model.add(Dense(hyperparameters[f'dense_units_{i}'], activation='relu'))
+        model.add(Dropout(hyperparameters.get(f'dense_dropout_{i}', 0.0)))
+
+    # Final output layer
+    model.add(NormalizeLayer(y_mean, y_std, normalize=False, name="output_denormalization")),
+    model.add(Dense(y_train.shape[1]))
+    
+    return model
 
 def train_lstm_model(
     X_train_scaled,
@@ -358,6 +418,7 @@ def train_lstm_model(
     y_scaler,
     change_in_load=False,
     verbose=0,
+    hyperparameters=None
 ):
     """Trains LSTM model and returns predictions on train and val sets."""
     print(f"Training LSTM model (change_in_load={change_in_load})...")
@@ -383,31 +444,30 @@ def train_lstm_model(
     # lstm_model.add(Dense(y_train_scaled.shape[1], activation="sigmoid"))
 
     print("Shape: ", X_train_lstm.shape)
+    
+    if hyperparameters:
+        lstm_model = build_lstm_model_with_hyperparameters(X_train_lstm, y_train_scaled, X_val_lstm, y_val_scaled, hyperparameters)
+        learning_rate = hyperparameters.get('learning_rate', 0.001)
+    else:
+        lstm_model = build_base_lstm_model(X_train_lstm, y_train_scaled, X_val_lstm, y_val_scaled)
+        learning_rate = 0.001
+    
+    # X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max = get_X_y_stats_tensors(X_train_lstm, y_train_scaled)
 
-    X_mean = K.constant(X_train_lstm.mean(axis=0))
-    X_std = K.constant(X_train_lstm.std(axis=0))
-    X_min = K.constant(X_train_lstm.min(axis=0))
-    X_max = K.constant(X_train_lstm.max(axis=0))
+    # lstm_model = Sequential()
 
-    y_mean = K.constant(y_train_scaled.mean(axis=0))
-    y_std = K.constant(y_train_scaled.std(axis=0))
-    y_min = K.constant(y_train_scaled.min(axis=0))
-    y_max = K.constant(y_train_scaled.max(axis=0))
-
-    lstm_model = Sequential()
-
-    lstm_model.add(Input(shape=(X_train_lstm.shape[1:])))
-    # lstm_model.add(Lambda(lambda x: (x - X_mean) / (X_std + 1e-8), name="input_normalization"))
-    lstm_model.add(NormalizeLayer(X_mean, X_std, normalize=True, name="input_normalization")),
-    # Dense(128, activation="relu", kernel_regularizer=keras.regularizers.l2(0.1))
-    lstm_model.add(LSTM(128, return_sequences=False))
-    # lstm_model.add(Dense(50, activation="sigmoid"))
-    lstm_model.add(Dropout(0.5))
-    lstm_model.add(Dense(y_train_scaled.shape[1]))
-    lstm_model.add(NormalizeLayer(y_mean, y_std, normalize=False, name="output_denormalization")),
+    # lstm_model.add(Input(shape=(X_train_lstm.shape[1:])))
+    # # lstm_model.add(Lambda(lambda x: (x - X_mean) / (X_std + 1e-8), name="input_normalization"))
+    # lstm_model.add(NormalizeLayer(X_mean, X_std, normalize=True, name="input_normalization")),
+    # # Dense(128, activation="relu", kernel_regularizer=keras.regularizers.l2(0.1))
+    # lstm_model.add(LSTM(128, return_sequences=False))
+    # # lstm_model.add(Dense(50, activation="sigmoid"))
+    # lstm_model.add(Dropout(0.5))
+    # lstm_model.add(Dense(y_train_scaled.shape[1]))
+    # lstm_model.add(NormalizeLayer(y_mean, y_std, normalize=False, name="output_denormalization")),
     # lstm_model.add(Lambda(lambda x: (x * y_std) + y_mean, name="output_denormalization"))
 
-    lstm_model.compile(optimizer=Adam(learning_rate=0.001), loss="mean_squared_error", metrics=["mae"])
+    lstm_model.compile(optimizer=Adam(learning_rate), loss="mean_squared_error", metrics=["mae"])
 
     callbacks = [
         EarlyStopping(monitor="val_loss", patience=25, restore_best_weights=True, verbose=1),
