@@ -223,17 +223,20 @@ def train_lightgbm_model(X_train_scaled, y_train_scaled, X_val_scaled, y_val_ori
     print("Model fitting complete.")
     print("Predicting on scaled validation set...")
     y_pred_val_scaled = model.predict(X_val_scaled)
-    print("Inverse transforming predictions to original scale...")
-    try:
-        if y_pred_val_scaled.shape[1] != y_scaler.n_features_in_:
-            raise ValueError(
-                f"Prediction shape mismatch: predicted {y_pred_val_scaled.shape[1]} features, y_scaler expects {y_scaler.n_features_in_}"
-            )
-        y_pred_val_original = y_scaler.inverse_transform(y_pred_val_scaled)
-    except Exception as e:
-        print(f"Error during inverse transform: {e}")
-        traceback.print_exc()
-        return model, {"mae": np.nan, "rmse": np.nan, "smape": np.nan}, None  # Return None for preds
+    y_pred_val_original = y_pred_val_scaled
+    print("Testing - removing inverse transform for now")
+
+    # print("Inverse transforming predictions to original scale...")
+    # try:
+    #     if y_pred_val_scaled.shape[1] != y_scaler.n_features_in_:
+    #         raise ValueError(
+    #             f"Prediction shape mismatch: predicted {y_pred_val_scaled.shape[1]} features, y_scaler expects {y_scaler.n_features_in_}"
+    #         )
+    #     y_pred_val_original = y_scaler.inverse_transform(y_pred_val_scaled)
+    # except Exception as e:
+    #     print(f"Error during inverse transform: {e}")
+    #     traceback.print_exc()
+    #     return model, {"mae": np.nan, "rmse": np.nan, "smape": np.nan}, None  # Return None for preds
     print("Calculating validation metrics on original scale...")
     y_val_np = y_val_original.values if isinstance(y_val_original, pd.DataFrame) else y_val_original
     y_pred_val_np = y_pred_val_original
@@ -345,6 +348,7 @@ def train_ann_model(
     print(f"ANN Model training complete. Validation Metrics (Original Scale): {validation_metrics}")
     return ann_model, validation_metrics, y_pred_train_original, y_pred_val_original
 
+
 def get_X_y_stats_tensors(X_train, y_train):
     X_mean = K.constant(X_train.mean(axis=0))
     X_std = K.constant(X_train.std(axis=0))
@@ -355,14 +359,15 @@ def get_X_y_stats_tensors(X_train, y_train):
     y_std = K.constant(y_train.std(axis=0))
     y_min = K.constant(y_train.min(axis=0))
     y_max = K.constant(y_train.max(axis=0))
-    
+
     return X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max
+
 
 def build_base_lstm_model(X_train, y_train, X_test, y_test):
     """Builds a simple LSTM model."""
-    
+
     X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max = get_X_y_stats_tensors(X_train, y_train)
-    
+
     lstm_model = Sequential()
     lstm_model.add(Input(shape=(X_train.shape[1:])))
     # lstm_model.add(Lambda(lambda x: (x - X_mean) / (X_std + 1e-8), name="input_normalization"))
@@ -374,37 +379,40 @@ def build_base_lstm_model(X_train, y_train, X_test, y_test):
     lstm_model.add(Dense(y_train.shape[1]))
     lstm_model.add(NormalizeLayer(y_mean, y_std, normalize=False, name="output_denormalization")),
     return lstm_model
-    
+
 
 def build_lstm_model_with_hyperparameters(X_train, y_train, X_test, y_test, hyperparameters):
     X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max = get_X_y_stats_tensors(X_train, y_train)
-    
+
     model = Sequential()
     model.add(Input(shape=(X_train.shape[1:])))
     model.add(NormalizeLayer(X_mean, X_std, normalize=True, name="input_normalization")),
     # Add LSTM layers
-    for i in range(hyperparameters['n_lstm_layers']):
-        return_sequences = True if i < hyperparameters['n_lstm_layers'] - 1 else False
-        
+    for i in range(hyperparameters["n_lstm_layers"]):
+        return_sequences = True if i < hyperparameters["n_lstm_layers"] - 1 else False
+
         if i == 0:
-            model.add(LSTM(hyperparameters['lstm_units'], 
-                           return_sequences=return_sequences,
-                           dropout=hyperparameters.get(f'lstm_dropout_{i}', 0.0),))
+            model.add(
+                LSTM(
+                    hyperparameters["lstm_units"],
+                    return_sequences=return_sequences,
+                    dropout=hyperparameters.get(f"lstm_dropout_{i}", 0.0),
+                )
+            )
         else:
-            model.add(LSTM(hyperparameters['lstm_units'], 
-                           return_sequences=return_sequences, 
-                           dropout=hyperparameters.get(f'lstm_dropout_{i}', 0.0)))
+            model.add(LSTM(hyperparameters["lstm_units"], return_sequences=return_sequences, dropout=hyperparameters.get(f"lstm_dropout_{i}", 0.0)))
 
     # Add Dense layers
-    for i in range(hyperparameters['n_dense_layers']):
-        model.add(Dense(hyperparameters[f'dense_units_{i}'], activation='relu'))
-        model.add(Dropout(hyperparameters.get(f'dense_dropout_{i}', 0.0)))
+    for i in range(hyperparameters["n_dense_layers"]):
+        model.add(Dense(hyperparameters[f"dense_units_{i}"], activation="relu"))
+        model.add(Dropout(hyperparameters.get(f"dense_dropout_{i}", 0.0)))
 
     # Final output layer
     model.add(NormalizeLayer(y_mean, y_std, normalize=False, name="output_denormalization")),
     model.add(Dense(y_train.shape[1]))
-    
+
     return model
+
 
 def train_lstm_model(
     X_train_scaled,
@@ -418,7 +426,7 @@ def train_lstm_model(
     y_scaler,
     change_in_load=False,
     verbose=0,
-    hyperparameters=None
+    hyperparameters=None,
 ):
     """Trains LSTM model and returns predictions on train and val sets."""
     print(f"Training LSTM model (change_in_load={change_in_load})...")
@@ -444,14 +452,14 @@ def train_lstm_model(
     # lstm_model.add(Dense(y_train_scaled.shape[1], activation="sigmoid"))
 
     print("Shape: ", X_train_lstm.shape)
-    
+
     if hyperparameters:
         lstm_model = build_lstm_model_with_hyperparameters(X_train_lstm, y_train_scaled, X_val_lstm, y_val_scaled, hyperparameters)
-        learning_rate = hyperparameters.get('learning_rate', 0.001)
+        learning_rate = hyperparameters.get("learning_rate", 0.001)
     else:
         lstm_model = build_base_lstm_model(X_train_lstm, y_train_scaled, X_val_lstm, y_val_scaled)
         learning_rate = 0.001
-    
+
     # X_mean, X_std, X_min, X_max, y_mean, y_std, y_min, y_max = get_X_y_stats_tensors(X_train_lstm, y_train_scaled)
 
     # lstm_model = Sequential()
@@ -487,14 +495,21 @@ def train_lstm_model(
         print("WARNING: NaN detected in loss during training history.")
     print("Predicting on scaled training set with LSTM...")
     y_pred_train_scaled = lstm_model.predict(X_train_lstm)
-    print("Inverse transforming training predictions...")
-    y_pred_train_original = y_scaler.inverse_transform(y_pred_train_scaled)
+    y_pred_train_original = y_pred_train_scaled
+
+    print("Testing - removing inverse transform for now")
+
+    # print("Inverse transforming training predictions...")
+    # y_pred_train_original = y_scaler.inverse_transform(y_pred_train_scaled)
     if change_in_load:
         y_pred_train_original = convert_change_in_load_to_base_load(X_train_original, y_pred_train_original)
     print("Predicting on scaled validation set with LSTM...")
     y_pred_val_scaled = lstm_model.predict(X_val_lstm)
-    print("Inverse transforming validation predictions...")
-    y_pred_val_original = y_scaler.inverse_transform(y_pred_val_scaled)
+    y_pred_val_original = y_pred_val_scaled
+    print("Testing - removing inverse transform for now")
+
+    # print("Inverse transforming validation predictions...")
+    # y_pred_val_original = y_scaler.inverse_transform(y_pred_val_scaled)
     if change_in_load:
         y_pred_val_original = convert_change_in_load_to_base_load(X_val_original, y_pred_val_original)
     print("Calculating LSTM validation metrics on original scale...")
@@ -581,8 +596,8 @@ def predict_with_loaded_artifact(loaded_artifact, X_scaled_input, X_original_inp
         feature_columns = loaded_artifact.get("feature_columns")
         target_columns = loaded_artifact.get("target_columns")  # Needed for shape check
 
-        if model is None or y_scaler is None or feature_columns is None or target_columns is None:
-            raise ValueError("Loaded artifact is missing required components (model, y_scaler, feature_columns, target_columns).")
+        # if model is None or y_scaler is None or feature_columns is None or target_columns is None:
+        #     raise ValueError("Loaded artifact is missing required components (model, y_scaler, feature_columns, target_columns).")
 
         # --- Ensure Input Columns Match ---
         if list(X_scaled_input.columns) != feature_columns:
@@ -984,8 +999,8 @@ def run_rls_combination_stage(train_df_raw, val_df_raw, scenario, model_type, fe
             raise ValueError(f"Failed to load valid artifact for {base_model_arch}")
         y_scaler_for_rls = loaded_base_artifact.get("y_scaler")  # Get the scaler
         base_x_scaler = loaded_base_artifact.get("x_scaler")
-        if y_scaler_for_rls is None or base_x_scaler is None:
-            raise ValueError("Base model artifact missing required scalers.")
+        # if y_scaler_for_rls is None or base_x_scaler is None:
+        #     raise ValueError("Base model artifact missing required scalers.")
 
         # --- Load Change Model Artifact ---
         print(f"Loading Change Model: {change_model_arch}...")
@@ -1001,14 +1016,14 @@ def run_rls_combination_stage(train_df_raw, val_df_raw, scenario, model_type, fe
         # --- Prepare Data (Scaled X for input, Original X/y for context/actuals) ---
         # Prepare Training Data Inputs
         X_train_scaled, _, _, _ = feature_engineer_and_scale(
-            train_df_raw, scenario, x_scaler=base_x_scaler, y_scaler=y_scaler_for_rls, change_in_load=False, apply_scaling=True
+            train_df_raw, scenario, x_scaler=base_x_scaler, y_scaler=y_scaler_for_rls, change_in_load=False, apply_scaling=False
         )
         X_train_original, y_train_base_orig_df, _, _ = feature_engineer_and_scale(
             train_df_raw, scenario, x_scaler=base_x_scaler, y_scaler=y_scaler_for_rls, change_in_load=False, apply_scaling=False
         )
         # Prepare Validation Data Inputs
         X_val_scaled, _, _, _ = feature_engineer_and_scale(
-            val_df_raw, scenario, x_scaler=base_x_scaler, y_scaler=y_scaler_for_rls, change_in_load=False, apply_scaling=True
+            val_df_raw, scenario, x_scaler=base_x_scaler, y_scaler=y_scaler_for_rls, change_in_load=False, apply_scaling=False
         )
         X_val_original, y_val_base_orig_df, _, _ = feature_engineer_and_scale(
             val_df_raw, scenario, x_scaler=base_x_scaler, y_scaler=y_scaler_for_rls, change_in_load=False, apply_scaling=False
@@ -1142,7 +1157,7 @@ def run_training(feeder_id, model_arch, scenario, version, train_start, train_en
         # =============================================
         if is_single_model_run:
             change_in_load = model_arch in ["ANN_Change_in_Load", "LSTM_Change_in_Load"]
-            apply_scaling = True  # Always scale for these models
+            apply_scaling = False  # Always scale for these models
 
             print("&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&")
             print("TESTING: ", model_arch)
@@ -1188,9 +1203,14 @@ def run_training(feeder_id, model_arch, scenario, version, train_start, train_en
             # X_val_change.to_csv("X_val_change_base.csv", index=True)  # Save for debugging
             # X_val_original.to_csv("X_val_original_base.csv", index=True)  # Save for debugging
 
-            if X_train_scaled.empty or X_val_scaled.empty or fitted_x_scaler is None or fitted_y_scaler is None:
+            # if X_train_scaled.empty or X_val_scaled.empty or fitted_x_scaler is None or fitted_y_scaler is None:
+            #     print("Data processing failed. Aborting.")
+            #     return
+
+            if X_train_scaled.empty or X_val_scaled.empty:
                 print("Data processing failed. Aborting.")
                 return
+
             # Store column names needed later for saving scaler info
             feature_columns_list = X_train_scaled.columns.tolist()
             target_columns_list = y_train_original_base.columns.tolist()
@@ -1200,8 +1220,8 @@ def run_training(feeder_id, model_arch, scenario, version, train_start, train_en
                 hyperparameters = {"n_estimators": 100, "learning_rate": 0.1, "num_leaves": 31, "random_state": 42}
                 feature_config = {
                     "target": "Net_Load_Demand",
-                    "scaling_X": "MinMaxScaler",
-                    "scaling_y": "MinMaxScaler",
+                    # "scaling_X": "MinMaxScaler",
+                    # "scaling_y": "MinMaxScaler",
                     "output_hours": y_train_scaled.shape[1],
                 }
                 model_object_trained, final_validation_metrics, y_pred_val_lgbm_orig = train_lightgbm_model(
@@ -1212,8 +1232,8 @@ def run_training(feeder_id, model_arch, scenario, version, train_start, train_en
                 hyperparameters = {"layers": [50], "dropout": 0.2, "optimizer": "adam", "epochs": 50, "batch_size": 32, "patience": 8}
                 feature_config = {
                     "target": "Net_Load_Change" if change_in_load else "Net_Load_Demand",
-                    "scaling_X": "MinMaxScaler",
-                    "scaling_y": "MinMaxScaler",
+                    # "scaling_X": "MinMaxScaler",
+                    # "scaling_y": "MinMaxScaler",
                     "output_hours": y_train_scaled.shape[1],
                 }
                 model_object_trained, final_validation_metrics, _, y_pred_val_ann_orig = train_ann_model(
@@ -1233,8 +1253,8 @@ def run_training(feeder_id, model_arch, scenario, version, train_start, train_en
                 hyperparameters = {"lstm_units": 50, "dropout": 0.2, "optimizer": "adam", "epochs": 50, "batch_size": 32, "patience": 8}
                 feature_config = {
                     "target": "Net_Load_Change" if change_in_load else "Net_Load_Demand",
-                    "scaling_X": "MinMaxScaler",
-                    "scaling_y": "MinMaxScaler",
+                    # "scaling_X": "MinMaxScaler",
+                    # "scaling_y": "MinMaxScaler",
                     "output_hours": y_train_scaled.shape[1],
                 }
                 model_object_trained, final_validation_metrics, _, y_pred_val_lstm_orig = train_lstm_model(

@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+    name: barbados-forecasting-deployment
+spec:
+    replicas: 1
+    selector:
+        matchLabels:
+            app: barbados-forecasting
+    template:
+        metadata:
+            labels:
+                app: barbados-forecasting
+        spec:
+            containers:
+                - name: server
+                  image: barbados_forecasting_tool_final-server
+                  imagePullPolicy: Never
+                  ports:
+                      - containerPort: 8000
+                  # env:
+                  #   - name: SUPABASE_URL
+                  #     value: "your_supabase_url"
+                  #   - name: SUPABASE_KEY
+                  #     value: "your_supabase_key"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+    name: barbados-forecasting-service
+spec:
+    selector:
+        app: barbados-forecasting
+    ports:
+        - protocol: TCP
+          port: 8000
+          targetPort: 8000
+
+--- # Separator before the CronJob definition
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+    name: barbados-forecasting-cronjob # Name for your CronJob
+spec:
+    schedule: "*/10 * * * *" # Cron schedule: run every 10 minutes
+    jobTemplate: # Template for the Job that the CronJob will create
+        spec:
+            template: # Template for the Pod that the Job will create
+                spec:
+                    containers:
+                        - name: forecasting-task # Name of the container for the scheduled task
+                          image: barbados_forecasting_tool_final-server # Use the SAME image as your deployment
+                          # env: # MUST include the same environment variables needed by the script
+                          #   - name: SUPABASE_URL
+                          #     value: "your_supabase_url" # Replace with your actual Supabase URL
+                          #   - name: SUPABASE_KEY
+                          #     value: "your_supabase_key"  # Replace with your actual Supabase Key
+                          # --- IMPORTANT: Define the command to run for the scheduled task ---
+                          # Option 1: If your container's default CMD is already the script you want to run periodically
+                          # (Leave command/args empty or comment them out)
+
+                          # Option 2: Override the default CMD to run a specific script
+                          # command: ["python", "/app/Forecast_All_Feeders.py"] # Example: run your Python script
+                          # OR if it's a shell script:
+                          # command: ["/bin/sh", "-c", "/app/Automated_Forecast_Runner.sh"]
+
+                    restartPolicy:
+                        OnFailure # Restart policy for the Pod created by the Job
+                        # 'OnFailure' or 'Never' are common for CronJobs

@@ -19,6 +19,7 @@ try:
     from supabase import create_client, Client
     import traceback
     import plotly.express as px
+    import time
     from dotenv import load_dotenv, find_dotenv
 
     # from Trainer_Utils import NormalizeLayer
@@ -64,8 +65,9 @@ VALIDATION_START_DATE = "2024-06-01 00:00:00+00"
 VALIDATION_END_DATE = "2024-06-30 23:59:59+00"
 DAY_HOURS = list(range(6, 20 + 1))
 NIGHT_HOURS = list(range(0, 6)) + list(range(21, 24))
-script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
-TEMP_DIR = os.path.join(script_dir, "tmp")
+# script_dir = os.path.dirname(os.path.abspath(__file__)) if "__file__" in locals() else os.getcwd()
+# TEMP_DIR = os.path.join(script_dir, "tmp")
+TEMP_DIR = "./../tmp"
 
 
 class NormalizeLayer(Layer):
@@ -475,9 +477,11 @@ def load_artifact_from_storage(artifact_path_info):
             if not KERAS_AVAILABLE:
                 raise RuntimeError("Keras artifact specified, but TensorFlow/Keras is not installed.")
             print(f"Downloading Keras model to: {local_keras_temp_path}")
+
             with open(local_keras_temp_path, "wb+") as f:
                 res = supabase.storage.from_(STORAGE_BUCKET).download(keras_model_path)
                 f.write(res)
+
             print("Keras model downloaded. Loading...")
             loaded_model = load_model(local_keras_temp_path, custom_objects={"NormalizeLayer": NormalizeLayer})
             print("Keras model loaded.")

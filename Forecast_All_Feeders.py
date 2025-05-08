@@ -421,7 +421,7 @@ if __name__ == "__main__":
 
     print(f"\nStarting forecast generation loops for {total_runs} total combinations...")
 
-    for feeder_id in feeder_ids_to_process[0:1]:  # For testing, process only the first feeder
+    for feeder_id in feeder_ids_to_process:  # For testing, process only the first feeder
         for architecture in ARCHITECTURES_TO_FORECAST:
             for scenario in SCENARIOS_TO_FORECAST:
                 run_counter += 1

@@ -905,7 +905,7 @@ def get_prediction(feeder_id, target_date, architecture, scenario, version=None)
         if target_day_data.empty or target_day_data[required_forecast_cols].isnull().values.any():
             raise ValueError(f"Missing weather forecast data for {target_date}.")
         X_scaled_df, _, _, _ = feature_engineer_and_scale(
-            input_df_raw, model_scenario, target_date, x_scaler=x_scaler, y_scaler=y_scaler, change_in_load=predicts_change, apply_scaling=True
+            input_df_raw, model_scenario, target_date, x_scaler=x_scaler, y_scaler=y_scaler, change_in_load=predicts_change, apply_scaling=False
         )
         X_scaled_target_day = X_scaled_df
         if X_scaled_target_day.empty:
@@ -925,11 +925,11 @@ def get_prediction(feeder_id, target_date, architecture, scenario, version=None)
         else:
             X_input_final = X_scaled_target_day.values
         y_pred_scaled = model.predict(X_input_final)
-        print(f"Inverse transforming predictions for {model_arch}...")
-        if y_pred_scaled.shape[1] != y_scaler.n_features_in_:
-            raise ValueError(f"Prediction shape mismatch for inverse transform ({model_arch}).")
-        y_pred_original = y_scaler.inverse_transform(y_pred_scaled)
-        final_prediction_original = y_pred_original
+        # print(f"Inverse transforming predictions for {model_arch}...")
+        # if y_pred_scaled.shape[1] != y_scaler.n_features_in_:
+        #     raise ValueError(f"Prediction shape mismatch for inverse transform ({model_arch}).")
+        # y_pred_original = y_scaler.inverse_transform(y_pred_scaled)
+        final_prediction_original = y_pred_scaled
         if predicts_change:
             print(f"Converting change_in_load prediction for {model_arch}...")
             X_original_target_day, _, _, _ = feature_engineer_and_scale(
@@ -937,7 +937,7 @@ def get_prediction(feeder_id, target_date, architecture, scenario, version=None)
             )
             if X_original_target_day.empty:
                 raise ValueError(f"Could not retrieve original X data for change conversion ({model_arch}).")
-            final_prediction_original = convert_change_in_load_to_base_load(X_original_target_day, y_pred_original)
+            final_prediction_original = convert_change_in_load_to_base_load(X_original_target_day, y_pred_scaled)
         # Store the y_scaler used by this base model for potential use by RLS later
         y_scaler_to_use = y_scaler
         # --- End of Base Model block ---

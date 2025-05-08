@@ -22,7 +22,7 @@ if [ "$NEXT_DATE" \> "2024-07-05" ]; then
 fi
 
 # Run the Python forecast script with --target_date
-conda run -n Barbados python Forecast_All_Feeders.py "$NEXT_DATE"
+python Forecast_All_Feeders.py "$NEXT_DATE"
 
 # Update the date file
 echo "$NEXT_DATE" > "$LAST_DATE_FILE"

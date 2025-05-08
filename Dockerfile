@@ -1,92 +1,59 @@
-# Use an official Python base image
-FROM python:3.10-slim
+# syntax=docker/dockerfile:1
 
-# Set working directory
+# Comments are provided throughout this file to help you get started.
+# If you need more help, visit the Dockerfile reference guide at
+# https://docs.docker.com/go/dockerfile-reference/
+
+# Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
+
+ARG PYTHON_VERSION=3.10.13
+FROM python:${PYTHON_VERSION}-slim as base
+
+# Prevents Python from writing pyc files.
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Keeps Python from buffering stdout and stderr to avoid situations where
+# the application crashes without emitting any logs due to buffering.
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /app
 
-# Install system dependencies (if needed)
-RUN apt-get update && apt-get install -y \
-    bash \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Create a non-privileged user that the app will run under.
+# See https://docs.docker.com/go/dockerfile-user-best-practices/
+ARG UID=10001
+RUN adduser \
+    --disabled-password \
+    --gecos "" \
+    --home "/nonexistent" \
+    --shell "/sbin/nologin" \
+    --no-create-home \
+    --uid "${UID}" \
+    appuser
 
-# Copy only the requirements first to leverage Docker cache
-COPY requirements.txt .
+# Download dependencies as a separate step to take advantage of Docker's caching.
+# Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
+# Leverage a bind mount to requirements.txt to avoid having to copy them into
+# into this layer.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    python -m pip install -r requirements.txt
 
-# Create and activate virtual environment
-RUN python -m venv /opt/venv && \
-    . /opt/venv/bin/activate && \
-    pip install --upgrade pip && \
-    pip install -r requirements.txt
+RUN chown -R appuser:appuser /app
 
-# Make venv binaries accessible
-ENV PATH="/opt/venv/bin:$PATH"
+RUN apt-get update && apt-get install -y libgomp1
 
-# Copy the rest of the project
+# RUN pip install --upgrade tensorflow
+RUN ls
+
+
+# Switch to the non-privileged user to run the application.
+USER appuser
+
+# Copy the source code into the container.
 COPY . .
 
-# Ensure the shell script is executable
-RUN chmod +x Automated_Forecast_Runner.sh
+# Expose the port that the application listens on.
+EXPOSE 8000
 
-# Default command
-CMD ["bash", "./Automated_Forecast_Runner.sh"]
-
-
-
-# # Use micromamba as the base image
-# FROM mambaorg/micromamba:1.5.7
-
-# # Set up micromamba environment activation
-# ENV MAMBA_DOCKERFILE_ACTIVATE=1
-
-# # Set working directory
-# WORKDIR /app
-
-# # Copy environment.yml first to leverage Docker cache
-# COPY environment.yml .
-
-# # Create the conda environment using micromamba
-# RUN micromamba create -n forecast-env -f environment.yml && \
-#     micromamba clean --all --yes
-
-# # Copy the rest of the project files
-# COPY . .
-
-# # Ensure the shell script is executable
-# RUN chmod +x Automated_Forecast_Runner.sh
-
-# # Use micromamba shell to run commands inside the env
-# SHELL ["micromamba", "run", "-n", "forecast-env", "/bin/bash", "-c"]
-
-# # Default command
-# CMD ["micromamba", "run", "-n", "forecast-env", "bash", "./Automated_Forecast_Runner.sh"]
-
-
-
-
-# # Use miniconda as base image
-# FROM continuumio/miniconda3
-
-# # Set working directory
-# WORKDIR /app
-
-# # Copy environment file and all project files
-# COPY environment.yml .
-# COPY . .
-
-# RUN conda update -n base -c defaults conda
-
-# # Create the conda environment
-# # RUN conda env create -f environment.yml
-
-# RUN conda install -n base -c conda-forge mamba
-# RUN mamba env create -f environment.yml
-
-# # Activate environment and set it as default
-# SHELL ["conda", "run", "-n", "forecast-env", "/bin/bash", "-c"]
-
-# # Ensure the shell script is executable
-# RUN chmod +x Automated_Forecast_Runner.sh
-
-# # Default command (can be overridden)
-# CMD ["conda", "run", "--no-capture-output", "-n", "forecast-env", "bash", "./Automated_Forecast_Runner.sh"]
+# Run the application.
+CMD ./Automated_Forecast_Runner.sh
